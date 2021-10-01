@@ -164,6 +164,8 @@ func TestMultipleOps(t *testing.T) {
 	var ops []ovsdb.Operation
 	var op ovsdb.Operation
 
+	portA, err := ovsdb.NewOvsSet([]ovsdb.UUID{{GoUUID: "portA"}})
+	port10, err := ovsdb.NewOvsSet([]ovsdb.UUID{{GoUUID: "port10"}})
 	op = ovsdb.Operation{
 		Table: "Bridge",
 		Where: []ovsdb.Condition{
@@ -171,50 +173,24 @@ func TestMultipleOps(t *testing.T) {
 		},
 		Op: ovsdb.OperationMutate,
 		Mutations: []ovsdb.Mutation{
-			// *ovsdb.NewMutation("ports", ovsdb.MutateOperationInsert, ovsdb.UUID{GoUUID: "portA"}),
-			// *ovsdb.NewMutation("ports", ovsdb.MutateOperationDelete, []ovsdb.UUID{{GoUUID: "port10"}}),
-			*ovsdb.NewMutation("ports", ovsdb.MutateOperationDelete, ovsdb.UUID{GoUUID: "port10"}),
+			*ovsdb.NewMutation("ports", ovsdb.MutateOperationInsert, portA),
+			*ovsdb.NewMutation("ports", ovsdb.MutateOperationDelete, port10),
 		},
 	}
 	ops = append(ops, op)
 
-	op = ovsdb.Operation{
+	portB, err := ovsdb.NewOvsSet([]ovsdb.UUID{{GoUUID: "portB"}})
+	op2 := ovsdb.Operation{
 		Table: "Bridge",
 		Where: []ovsdb.Condition{
 			ovsdb.NewCondition("_uuid", ovsdb.ConditionEqual, ovsdb.UUID{GoUUID: bridgeUUID}),
 		},
 		Op: ovsdb.OperationMutate,
 		Mutations: []ovsdb.Mutation{
-			*ovsdb.NewMutation("ports", ovsdb.MutateOperationInsert, ovsdb.UUID{GoUUID: "portA"}),
-			// *ovsdb.NewMutation("ports", ovsdb.MutateOperationDelete, ovsdb.UUID{GoUUID: "port10"}),
+			*ovsdb.NewMutation("ports", ovsdb.MutateOperationInsert, portB),
 		},
 	}
-	ops = append(ops, op)
-
-	op = ovsdb.Operation{
-		Table: "Bridge",
-		Where: []ovsdb.Condition{
-			ovsdb.NewCondition("_uuid", ovsdb.ConditionEqual, ovsdb.UUID{GoUUID: bridgeUUID}),
-		},
-		Op: ovsdb.OperationMutate,
-		Mutations: []ovsdb.Mutation{
-			*ovsdb.NewMutation("ports", ovsdb.MutateOperationInsert, ovsdb.UUID{GoUUID: "portB"}),
-		},
-	}
-	ops = append(ops, op)
-
-	op = ovsdb.Operation{
-		Table: "Bridge",
-		Where: []ovsdb.Condition{
-			ovsdb.NewCondition("_uuid", ovsdb.ConditionEqual, ovsdb.UUID{GoUUID: bridgeUUID}),
-		},
-		Op: ovsdb.OperationMutate,
-		Mutations: []ovsdb.Mutation{
-			*ovsdb.NewMutation("ports", ovsdb.MutateOperationInsert, ovsdb.UUID{GoUUID: "portB"}),
-			*ovsdb.NewMutation("ports", ovsdb.MutateOperationInsert, ovsdb.UUID{GoUUID: "portC"}),
-		},
-	}
-	ops = append(ops, op)
+	ops = append(ops, op2)
 
 	results, updates := o.transact("Open_vSwitch", ops)
 	require.Len(t, results, len(ops))
@@ -227,7 +203,9 @@ func TestMultipleOps(t *testing.T) {
 
 	oldPorts, err := ovsdb.NewOvsSet([]ovsdb.UUID{{GoUUID: "port1"}, {GoUUID: "port10"}})
 	assert.Nil(t, err)
-	newPorts, err := ovsdb.NewOvsSet([]ovsdb.UUID{{GoUUID: "port1"}, {GoUUID: "portA"}, {GoUUID: "portB"}, {GoUUID: "portC"}})
+	// newPorts, err := ovsdb.NewOvsSet([]ovsdb.UUID{{GoUUID: "port1"}, {GoUUID: "port10"}, {GoUUID: "portB"}, {GoUUID: "portD"}, {GoUUID: "portC"}})
+	newPorts, err := ovsdb.NewOvsSet([]ovsdb.UUID{{GoUUID: "port1"}, {GoUUID: "portA"}, {GoUUID: "portB"}})
+	// newPorts, err := ovsdb.NewOvsSet([]ovsdb.UUID{{GoUUID: "port1"}, {GoUUID: "portA"}})
 	assert.Nil(t, err)
 
 	assert.Equal(t, ovsdb.TableUpdates{
