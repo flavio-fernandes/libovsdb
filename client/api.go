@@ -69,6 +69,11 @@ type ConditionalAPI interface {
 
 	// Delete returns the Operations needed to delete the models selected via the condition
 	Delete() ([]ovsdb.Operation, error)
+
+	// Wait returns the operation needed to perform the wait specified
+	// by the model, conditions, timeout on given columns.
+	// It will also populate the until and rows, based on provided parameters.
+	Wait(model.Model, []ovsdb.Condition, *int, []string, ovsdb.ConditionFunction, []ovsdb.Row) ([]ovsdb.Operation, error)
 }
 
 // ErrWrongType is used to report the user provided parameter has the wrong type
@@ -404,6 +409,28 @@ func (a api) Delete() ([]ovsdb.Operation, error) {
 	}
 
 	return operations, nil
+}
+
+func (a api) Wait(model model.Model, cond []ovsdb.Condition, timeout *int, col []string,
+	untilConFun ovsdb.ConditionFunction, untilRows []ovsdb.Row) ([]ovsdb.Operation, error) {
+	tableName, err := a.getTableFromModel(model)
+	if err != nil {
+		return nil, err
+	}
+
+	operation := ovsdb.Operation{
+		Op:      ovsdb.OperationWait,
+		Table:   tableName,
+		Where:   cond,
+		Columns: col,
+		Until:   string(untilConFun),
+		Rows:    untilRows,
+	}
+	if timeout != nil {
+		operation.Timeout = timeout
+	}
+
+	return []ovsdb.Operation{operation}, nil
 }
 
 // getTableFromModel returns the table name from a Model object after performing
