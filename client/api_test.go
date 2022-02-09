@@ -1292,3 +1292,80 @@ func BenchmarkAPIListPredicate(b *testing.B) {
 		})
 	}
 }
+
+func TestAPIWait(t *testing.T) {
+	lspCache := map[string]model.Model{
+		aUUID0: &testLogicalSwitchPort{
+			UUID:        aUUID0,
+			Name:        "lsp0",
+			Type:        "someType",
+			ExternalIds: map[string]string{"foo": "bar"},
+			Enabled:     &trueVal,
+			Tag:         &one,
+		},
+		aUUID1: &testLogicalSwitchPort{
+			UUID:        aUUID1,
+			Name:        "lsp1",
+			Type:        "someType",
+			ExternalIds: map[string]string{"foo": "baz"},
+			Tag:         &one,
+			Enabled:     &trueVal,
+		},
+		aUUID2: &testLogicalSwitchPort{
+			UUID:        aUUID2,
+			Name:        "lsp2",
+			Type:        "someOtherType",
+			ExternalIds: map[string]string{"foo": "baz"},
+			Tag:         &one,
+		},
+	}
+	testData := cache.Data{
+		"Logical_Switch_Port": lspCache,
+	}
+	tcache := apiTestCache(t, testData)
+	timeout0 := 0
+
+	test := []struct {
+		name      string
+		condition func(API) ConditionalAPI
+		until     ovsdb.WaitCondition
+		timeout   *int
+		rows      []model.Model
+		cols      []string
+		result    []ovsdb.Operation
+		err       bool
+	}{
+		{
+			name: "wait timeout 0",
+			condition: func(a API) ConditionalAPI {
+				return a.Where(&testLogicalSwitchPort{
+					Name: "lsp1",
+				})
+			},
+			until: "==",
+			timeout: &timeout0,
+			result: []ovsdb.Operation{
+				{
+					Op:    ovsdb.OperationWait,
+					Table: "Logical_Switch_Port",
+					Where: []ovsdb.Condition{{Column: "name", Function: ovsdb.ConditionEqual, Value: "lsp1"}},
+					Until: string(ovsdb.WaitConditionEqual),
+				},
+			},
+			err: false,
+		},
+	}
+	for _, tt := range test {
+		t.Run(fmt.Sprintf("ApiWait: %s", tt.name), func(t *testing.T) {
+			api := newAPI(tcache, &discardLogger)
+			cond := tt.condition(api)
+			ops, err := cond.Wait(tt.until, tt.timeout, tt.rows, tt.cols)
+			if tt.err {
+				assert.NotNil(t, err)
+			} else {
+				assert.Nil(t, err)
+				assert.ElementsMatchf(t, tt.result, ops, "ovsdb.Operations should match")
+			}
+		})
+	}
+}
