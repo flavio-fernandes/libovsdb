@@ -70,10 +70,28 @@ type ConditionalAPI interface {
 	// Delete returns the Operations needed to delete the models selected via the condition
 	Delete() ([]ovsdb.Operation, error)
 
-	// Wait returns the operation needed to perform the wait specified
-	// by the model, conditions, timeout on given columns.
-	// It will also populate the until and rows, based on provided parameters.
-	Wait(model.Model, []ovsdb.Condition, *int, []string, ovsdb.ConditionFunction, []ovsdb.Row) ([]ovsdb.Operation, error)
+	// Wait returns the operations needed to perform the wait specified
+	// by the until condition, timeout, rows and columns based on provided parameters.
+	Wait(ovsdb.WaitCondition, *int, interface{}, ...interface{}) ([]ovsdb.Operation, error)
+
+	/*
+	client.Where(....).Wait(
+		until, // Until
+		timeout, // Timeout
+		[]LoadBalancer{LoadBalancer{Name: "foo"}}, // Rows and Table
+		LoadBalancer.Name // Cols
+	)
+	*/
+
+	// ops = append(ops, libovsdb.Operation{
+	// 	Op:      libovsdb.OperationWait,
+	// 	Timeout: &timeout,
+	// 	Table:   "Load_Balancer",
+	// 	Where:   []libovsdb.Condition{{Column: "name", Function: libovsdb.ConditionEqual, Value: lb.Name}},
+	// 	Columns: []string{"name"},
+	// 	Until:   "!=",
+	// 	Rows:    []libovsdb.Row{{"name": lb.Name}},
+	// })
 }
 
 // ErrWrongType is used to report the user provided parameter has the wrong type
@@ -411,20 +429,23 @@ func (a api) Delete() ([]ovsdb.Operation, error) {
 	return operations, nil
 }
 
-func (a api) Wait(model model.Model, cond []ovsdb.Condition, timeout *int, col []string,
-	untilConFun ovsdb.ConditionFunction, untilRows []ovsdb.Row) ([]ovsdb.Operation, error) {
-	tableName, err := a.getTableFromModel(model)
-	if err != nil {
-		return nil, err
-	}
+
+func (a api) Wait(untilConFun ovsdb.WaitCondition, timeout *int, rows interface{}, cols ...interface{}) ([]ovsdb.Operation, error) {
+
+// func (a api) Wait(model model.Model, cond []ovsdb.Condition, timeout *int, col []string,
+// 	untilConFun ovsdb.ConditionFunction, untilRows []ovsdb.Row) ([]ovsdb.Operation, error) {
+// 	tableName, err := a.getTableFromModel(model)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
 	operation := ovsdb.Operation{
 		Op:      ovsdb.OperationWait,
-		Table:   tableName,
-		Where:   cond,
-		Columns: col,
+		// Table:   tableName,
+		// Where:   cond,
+		// Columns: col,
 		Until:   string(untilConFun),
-		Rows:    untilRows,
+		// Rows:    untilRows,
 	}
 	if timeout != nil {
 		operation.Timeout = timeout
