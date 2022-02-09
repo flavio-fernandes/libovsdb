@@ -1347,9 +1347,12 @@ func TestAPIWait(t *testing.T) {
 			result: []ovsdb.Operation{
 				{
 					Op:    ovsdb.OperationWait,
-					Table: "Logical_Switch_Port",
+					// Table: "Logical_Switch_Port",
+					Timeout: &timeout0,
 					Where: []ovsdb.Condition{{Column: "name", Function: ovsdb.ConditionEqual, Value: "lsp1"}},
 					Until: string(ovsdb.WaitConditionEqual),
+					// Columns: []string{"name"},
+					// Rows:    []libovsdb.Row{{"name": "lsp1"}},
 				},
 			},
 			err: false,
