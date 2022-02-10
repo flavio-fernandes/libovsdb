@@ -451,7 +451,15 @@ func (a api) Wait(untilConFun ovsdb.WaitCondition, timeout *int, rows interface{
 		return nil, &ErrWrongType{resultVal.Type(), "Expected slice of valid Models"}
 	}
 
-	table, err := a.getTableFromModel(reflect.New(resultVal.Type().Elem().Elem()).Interface())
+	model := reflect.New(resultVal.Type().Elem().Elem()).Interface()
+	// table, err := a.getTableFromModel(reflect.New(resultVal.Type().Elem().Elem()).Interface())
+	table, err := a.getTableFromModel(model)
+	if err != nil {
+		return nil, err
+	}
+
+	// tableSchema := a.cache.Mapper().Schema.Table(table)
+	info, err := a.cache.DatabaseModel().NewModelInfo(model)
 	if err != nil {
 		return nil, err
 	}
@@ -466,8 +474,22 @@ func (a api) Wait(untilConFun ovsdb.WaitCondition, timeout *int, rows interface{
 			Until: string(untilConFun),
 			// Rows:    untilRows,
 		}
+
 		if timeout != nil {
 			operation.Timeout = timeout
+		}
+
+		if len(cols) > 0 {
+			columnNames := make([]string, 0, len(cols))
+			for _, f := range cols {
+				// TODO(flaviof): I NEED HELP TO MAKE THIS WORK
+				colName, err := info.ColumnByPtr(f)
+				if err != nil {
+					return nil, err
+				}
+				columnNames = append(columnNames, colName)
+			}
+			operation.Columns = columnNames
 		}
 		operations = append(operations, operation)
 	}

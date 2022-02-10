@@ -1313,10 +1313,11 @@ func TestAPIWait(t *testing.T) {
 	test := []struct {
 		name      string
 		condition func(API) ConditionalAPI
+		prepare   func() (interface{}, []interface{})
 		until     ovsdb.WaitCondition
 		timeout   *int
-		rows      []*testLogicalSwitchPort
-		cols      []string
+		// rows      []*testLogicalSwitchPort
+		// cols      []interface{}
 		result    []ovsdb.Operation
 		err       bool
 	}{
@@ -1329,10 +1330,20 @@ func TestAPIWait(t *testing.T) {
 			},
 			until: "==",
 			timeout: &timeout0,
-			rows: []*testLogicalSwitchPort{{Name: "lsp0"}},
-			// rows: []*testLogicalSwitchPort{&testLogicalSwitchPort{Name: "lsp0"}},
-			// List(&[]testLogicalSwitchPort{}) ->
-			// List(&[]*testLogicalSwitchPort{}) ->
+			prepare: func() (interface{}, []interface{}) {
+				testLSP := testLogicalSwitchPort{
+					Name: "lsp0",
+				}
+				rcRows := []*testLogicalSwitchPort{&testLSP}
+				// rcCols := []interface{}{&testLSP.Name}
+				// return rcRows, rcCols
+				return rcRows, nil
+			},
+			// rows: []*testLogicalSwitchPort{{Name: "lsp0"}},
+			//// rows: []*testLogicalSwitchPort{&testLogicalSwitchPort{Name: "lsp0"}},
+			//// List(&[]testLogicalSwitchPort{}) ->
+			//// List(&[]*testLogicalSwitchPort{}) ->
+			//// cols: []interface{}{&testLSP.Name},
 			result: []ovsdb.Operation{
 				{
 					Op:    ovsdb.OperationWait,
@@ -1341,17 +1352,27 @@ func TestAPIWait(t *testing.T) {
 					Where: []ovsdb.Condition{{Column: "name", Function: ovsdb.ConditionEqual, Value: "lsp0"}},
 					Until: string(ovsdb.WaitConditionEqual),
 					// Columns: []string{"name"},
-					// Rows:    []libovsdb.Row{{"name": "lsp1"}},
+					// Rows:    []libovsdb.Row{{"name": "lsp0"}},
 				},
 			},
 			err: false,
 		},
 	}
+
+	// interfaceSlice := func(a []string) []interface{} {
+	// 	b := make([]interface{}, len(a))
+	// 	for i := range a {
+    // 		b[i] = a[i]
+	// 	}
+	// 	return b
+	// }
+
 	for _, tt := range test {
 		t.Run(fmt.Sprintf("ApiWait: %s", tt.name), func(t *testing.T) {
 			api := newAPI(tcache, &discardLogger)
 			cond := tt.condition(api)
-			ops, err := cond.Wait(tt.until, tt.timeout, tt.rows, tt.cols)
+			rows, cols := tt.prepare()
+			ops, err := cond.Wait(tt.until, tt.timeout, rows, cols...)
 			if tt.err {
 				assert.NotNil(t, err)
 			} else {
