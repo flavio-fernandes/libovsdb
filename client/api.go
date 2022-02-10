@@ -438,10 +438,25 @@ func (a api) Wait(untilConFun ovsdb.WaitCondition, timeout *int, rows interface{
 		return nil, err
 	}
 
+	resultVal := reflect.ValueOf(rows)
+	if resultVal.Type().Kind() != reflect.Slice {
+		return nil, &ErrWrongType{resultVal.Type(), "Expected slice of valid Models"}
+	}
+
+	// f0 := resultVal.Type()
+	// f00 := f0.Elem()
+	// f1 := reflect.New(f00)
+	// f2 := f1.Interface()
+	// table, err := a.getTableFromModel(f2)
+	table, err := a.getTableFromModel(reflect.New(resultVal.Type().Elem()).Interface())
+	if err != nil {
+		return nil, err
+	}
+
 	for _, condition := range conditions {
 		operation := ovsdb.Operation{
 			Op:      ovsdb.OperationWait,
-			// Table:   tableName,
+			Table: table,
 			Where:   condition,
 			// Columns: col,
 			Until:   string(untilConFun),
