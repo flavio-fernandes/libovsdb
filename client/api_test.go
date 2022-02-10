@@ -1322,7 +1322,7 @@ func TestAPIWait(t *testing.T) {
 		err       bool
 	}{
 		{
-			name: "wait timeout 0",
+			name: "timeout 0, no columns",
 			condition: func(a API) ConditionalAPI {
 				return a.Where(&testLogicalSwitchPort{
 					Name: "lsp0",
@@ -1357,15 +1357,37 @@ func TestAPIWait(t *testing.T) {
 			},
 			err: false,
 		},
+		{
+			name: "timeout 0, columns IS BROKEN!",
+			condition: func(a API) ConditionalAPI {
+				return a.Where(&testLogicalSwitchPort{
+					Name: "lsp0",
+				})
+			},
+			until: "==",
+			timeout: &timeout0,
+			prepare: func() (interface{}, []interface{}) {
+				testLSP := testLogicalSwitchPort{
+					Name: "lsp0",
+				}
+				rcRows := []*testLogicalSwitchPort{&testLSP}
+				rcCols := []interface{}{&testLSP.Name}
+				return rcRows, rcCols
+			},
+			result: []ovsdb.Operation{
+				{
+					Op:    ovsdb.OperationWait,
+					Table: "Logical_Switch_Port",
+					Timeout: &timeout0,
+					Where: []ovsdb.Condition{{Column: "name", Function: ovsdb.ConditionEqual, Value: "lsp0"}},
+					Until: string(ovsdb.WaitConditionEqual),
+					Columns: []string{"name"},
+					// Rows:    []libovsdb.Row{{"name": "lsp0"}},
+				},
+			},
+			err: false,
+		},
 	}
-
-	// interfaceSlice := func(a []string) []interface{} {
-	// 	b := make([]interface{}, len(a))
-	// 	for i := range a {
-    // 		b[i] = a[i]
-	// 	}
-	// 	return b
-	// }
 
 	for _, tt := range test {
 		t.Run(fmt.Sprintf("ApiWait: %s", tt.name), func(t *testing.T) {
