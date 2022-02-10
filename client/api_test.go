@@ -1303,21 +1303,6 @@ func TestAPIWait(t *testing.T) {
 			Enabled:     &trueVal,
 			Tag:         &one,
 		},
-		aUUID1: &testLogicalSwitchPort{
-			UUID:        aUUID1,
-			Name:        "lsp1",
-			Type:        "someType",
-			ExternalIds: map[string]string{"foo": "baz"},
-			Tag:         &one,
-			Enabled:     &trueVal,
-		},
-		aUUID2: &testLogicalSwitchPort{
-			UUID:        aUUID2,
-			Name:        "lsp2",
-			Type:        "someOtherType",
-			ExternalIds: map[string]string{"foo": "baz"},
-			Tag:         &one,
-		},
 	}
 	testData := cache.Data{
 		"Logical_Switch_Port": lspCache,
@@ -1330,7 +1315,7 @@ func TestAPIWait(t *testing.T) {
 		condition func(API) ConditionalAPI
 		until     ovsdb.WaitCondition
 		timeout   *int
-		rows      []model.Model
+		rows      []*testLogicalSwitchPort
 		cols      []string
 		result    []ovsdb.Operation
 		err       bool
@@ -1339,18 +1324,21 @@ func TestAPIWait(t *testing.T) {
 			name: "wait timeout 0",
 			condition: func(a API) ConditionalAPI {
 				return a.Where(&testLogicalSwitchPort{
-					Name: "lsp1",
+					Name: "lsp0",
 				})
 			},
 			until: "==",
 			timeout: &timeout0,
-			rows: []model.Model{&testLogicalSwitchPort{Name: "lsp1"}},
+			rows: []*testLogicalSwitchPort{{Name: "lsp0"}},
+			// rows: []*testLogicalSwitchPort{&testLogicalSwitchPort{Name: "lsp0"}},
+			// List(&[]testLogicalSwitchPort{}) ->
+			// List(&[]*testLogicalSwitchPort{}) ->
 			result: []ovsdb.Operation{
 				{
 					Op:    ovsdb.OperationWait,
 					Table: "Logical_Switch_Port",
 					Timeout: &timeout0,
-					Where: []ovsdb.Condition{{Column: "name", Function: ovsdb.ConditionEqual, Value: "lsp1"}},
+					Where: []ovsdb.Condition{{Column: "name", Function: ovsdb.ConditionEqual, Value: "lsp0"}},
 					Until: string(ovsdb.WaitConditionEqual),
 					// Columns: []string{"name"},
 					// Rows:    []libovsdb.Row{{"name": "lsp1"}},

@@ -73,25 +73,6 @@ type ConditionalAPI interface {
 	// Wait returns the operations needed to perform the wait specified
 	// by the until condition, timeout, rows and columns based on provided parameters.
 	Wait(ovsdb.WaitCondition, *int, interface{}, ...interface{}) ([]ovsdb.Operation, error)
-
-	/*
-	client.Where(....).Wait(
-		until, // Until
-		timeout, // Timeout
-		[]LoadBalancer{LoadBalancer{Name: "foo"}}, // Rows and Table
-		LoadBalancer.Name // Cols
-	)
-	*/
-
-	// ops = append(ops, libovsdb.Operation{
-	// 	Op:      libovsdb.OperationWait,
-	// 	Timeout: &timeout,
-	// 	Table:   "Load_Balancer",
-	// 	Where:   []libovsdb.Condition{{Column: "name", Function: libovsdb.ConditionEqual, Value: lb.Name}},
-	// 	Columns: []string{"name"},
-	// 	Until:   "!=",
-	// 	Rows:    []libovsdb.Row{{"name": lb.Name}},
-	// })
 }
 
 // ErrWrongType is used to report the user provided parameter has the wrong type
@@ -429,9 +410,36 @@ func (a api) Delete() ([]ovsdb.Operation, error) {
 	return operations, nil
 }
 
-
 func (a api) Wait(untilConFun ovsdb.WaitCondition, timeout *int, rows interface{}, cols ...interface{}) ([]ovsdb.Operation, error) {
 	var operations []ovsdb.Operation
+
+	// Wait returns the operations needed to perform the wait specified
+	// by the until condition, timeout, rows and columns based on provided parameters.
+	// Wait(ovsdb.WaitCondition, *int, rows interface{}, cols ...interface{}) ([]ovsdb.Operation, error)
+
+	/*
+		[]]libovsdb.Condition{{Column: "name", Function: libovsdb.ConditionEqual, Value: lb.Name}},
+
+		lb := &nbdb.LoadBalancer{UUID: "123123123", Name: "lbName"}
+
+		client.Where(lb).Wait(
+			until, // Until
+			timeout, // Timeout
+			[]*LoadBalancer{&LoadBalancer{Name: "foo"}}, // Rows and Table
+			[]{&lb.Name}, // Cols
+		)
+	*/
+
+	// today we do this:
+	// ops = append(ops, libovsdb.Operation{
+	// 	Op:      libovsdb.OperationWait,
+	// 	Timeout: &timeout,
+	// 	Table:   "Load_Balancer",
+	// 	Where:   []libovsdb.Condition{{Column: "name", Function: libovsdb.ConditionEqual, Value: "foo"}},
+	// 	Columns: []string{"name"},
+	// 	Until:   "!=",
+	// 	Rows:    []libovsdb.Row{{"name": "foo"}},
+	// })
 
 	conditions, err := a.cond.Generate()
 	if err != nil {
@@ -443,23 +451,19 @@ func (a api) Wait(untilConFun ovsdb.WaitCondition, timeout *int, rows interface{
 		return nil, &ErrWrongType{resultVal.Type(), "Expected slice of valid Models"}
 	}
 
-	// f0 := resultVal.Type()
-	// f00 := f0.Elem()
-	// f1 := reflect.New(f00)
-	// f2 := f1.Interface()
-	// table, err := a.getTableFromModel(f2)
-	table, err := a.getTableFromModel(reflect.New(resultVal.Type().Elem()).Interface())
+	table, err := a.getTableFromModel(reflect.New(resultVal.Type().Elem().Elem()).Interface())
 	if err != nil {
 		return nil, err
 	}
 
 	for _, condition := range conditions {
 		operation := ovsdb.Operation{
-			Op:      ovsdb.OperationWait,
+			Op:    ovsdb.OperationWait,
 			Table: table,
-			Where:   condition,
+			// Table: condition.table,
+			Where: condition,
 			// Columns: col,
-			Until:   string(untilConFun),
+			Until: string(untilConFun),
 			// Rows:    untilRows,
 		}
 		if timeout != nil {
