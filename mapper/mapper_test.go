@@ -1124,7 +1124,7 @@ func TestNewMonitorRequest(t *testing.T) {
 	mr, err := mapper.NewMonitorRequest(info, nil)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, mr.Columns, []string{"name", "config", "composed_1", "composed_2", "int1", "int2"})
-	mr2, err := mapper.NewMonitorRequest(info, []interface{}{&testTable.Int1, &testTable.MyName})
+	mr2, err := mapper.NewMonitorRequest(info, []string{"int1", "name"})
 	require.NoError(t, err)
 	assert.ElementsMatch(t, mr2.Columns, []string{"int1", "name"})
 }
