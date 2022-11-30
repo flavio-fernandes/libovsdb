@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/ovn-org/libovsdb/test"
+	"github.com/ovn-org/libovsdb/updates"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -20,10 +22,11 @@ func TestMonitorFilter(t *testing.T) {
 		"_uuid": "foo",
 		"name":  "bar",
 	}
+	bridgeExternalIds, _ := ovsdb.NewOvsMap(map[string]string{"foo": "bar"})
 	bridgeRowWithIDs := ovsdb.Row{
 		"_uuid":        "foo",
 		"name":         "bar",
-		"external_ids": map[string]string{"foo": "bar"},
+		"external_ids": bridgeExternalIds,
 	}
 	tests := []struct {
 		name     string
@@ -78,8 +81,17 @@ func TestMonitorFilter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			monitor.filter2(tt.update)
-			assert.Equal(t, tt.expected, tt.update)
+			dbModel, err := test.GetModel()
+			assert.NoError(t, err)
+			update := updates.ModelUpdates{}
+			for table, rows := range tt.update {
+				for uuid, row := range rows {
+					err := update.AddRowUpdate2(dbModel, table, uuid, nil, *row)
+					assert.NoError(t, err)
+				}
+			}
+			tu := monitor.filter2(update)
+			assert.Equal(t, tt.expected, tu)
 		})
 	}
 }
@@ -96,9 +108,10 @@ func TestMonitorFilter2(t *testing.T) {
 	bridgeRow := ovsdb.Row{
 		"name": "bar",
 	}
+	bridgeExternalIds, _ := ovsdb.NewOvsMap(map[string]string{"foo": "bar"})
 	bridgeRowWithIDs := ovsdb.Row{
 		"name":         "bar",
-		"external_ids": map[string]string{"foo": "bar"},
+		"external_ids": bridgeExternalIds,
 	}
 	tests := []struct {
 		name     string
@@ -153,8 +166,17 @@ func TestMonitorFilter2(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			monitor.filter2(tt.update)
-			assert.Equal(t, tt.expected, tt.update)
+			dbModel, err := test.GetModel()
+			assert.NoError(t, err)
+			update := updates.ModelUpdates{}
+			for table, rows := range tt.update {
+				for uuid, row := range rows {
+					err := update.AddRowUpdate2(dbModel, table, uuid, nil, *row)
+					assert.NoError(t, err)
+				}
+			}
+			tu := monitor.filter2(update)
+			assert.Equal(t, tt.expected, tu)
 		})
 	}
 }

@@ -69,19 +69,11 @@ func TestExpandNamedUUID(t *testing.T) {
 }
 
 func TestOvsdbServerMonitor(t *testing.T) {
-	defDB, err := model.NewClientDBModel("Open_vSwitch", map[string]model.Model{
-		"Open_vSwitch": &OvsType{},
-		"Bridge":       &BridgeType{}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	schema, err := GetSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
-	ovsDB := database.NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": defDB})
-	dbModel, errs := model.NewDatabaseModel(schema, defDB)
-	require.Empty(t, errs)
+	dbModel, err := GetModel()
+	require.NoError(t, err)
+	ovsDB := database.NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": dbModel.Client()})
+	schema := dbModel.Schema
+
 	o, err := NewOvsdbServer(ovsDB, dbModel)
 	require.Nil(t, err)
 	requests := make(map[string]ovsdb.MonitorRequest)
@@ -101,15 +93,34 @@ func TestOvsdbServerMonitor(t *testing.T) {
 	bazUUID := uuid.NewString()
 	quuxUUID := uuid.NewString()
 
+	operations := []ovsdb.Operation{
+		{
+			Op:       ovsdb.OperationInsert,
+			Table:    "Bridge",
+			UUIDName: fooUUID,
+			Row:      ovsdb.Row{"name": "foo"},
+		},
+		{
+			Op:       ovsdb.OperationInsert,
+			Table:    "Bridge",
+			UUIDName: barUUID,
+			Row:      ovsdb.Row{"name": "bar"},
+		},
+		{
+			Op:       ovsdb.OperationInsert,
+			Table:    "Bridge",
+			UUIDName: bazUUID,
+			Row:      ovsdb.Row{"name": "baz"},
+		},
+		{
+			Op:       ovsdb.OperationInsert,
+			Table:    "Bridge",
+			UUIDName: quuxUUID,
+			Row:      ovsdb.Row{"name": "quux"},
+		},
+	}
 	transaction := database.NewTransaction(dbModel, "Open_vSwitch", o.db, &o.logger)
-
-	_, updates := transaction.Insert("Bridge", fooUUID, ovsdb.Row{"name": "foo"})
-	_, update2 := transaction.Insert("Bridge", barUUID, ovsdb.Row{"name": "bar"})
-	updates.Merge(update2)
-	_, update3 := transaction.Insert("Bridge", bazUUID, ovsdb.Row{"name": "baz"})
-	updates.Merge(update3)
-	_, update4 := transaction.Insert("Bridge", quuxUUID, ovsdb.Row{"name": "quux"})
-	updates.Merge(update4)
+	_, updates := transaction.Transact(operations)
 	err = o.db.Commit("Open_vSwitch", uuid.New(), updates)
 	require.NoError(t, err)
 

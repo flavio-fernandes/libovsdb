@@ -22,15 +22,11 @@ import (
 )
 
 func buildTestServerAndClient(t *testing.T) (client.Client, func()) {
-	defDB, err := model.NewClientDBModel("Open_vSwitch", map[string]model.Model{
-		"Open_vSwitch": &OvsType{},
-		"Bridge":       &BridgeType{}})
-	require.Nil(t, err)
-
-	schema, err := GetSchema()
-	require.Nil(t, err)
-
-	ovsDB := database.NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": defDB})
+	dbModel, err := GetModel()
+	require.NoError(t, err)
+	ovsDB := database.NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": dbModel.Client()})
+	schema := dbModel.Schema
+	defDB := dbModel.Client()
 
 	rand.Seed(time.Now().UnixNano())
 	tmpfile := fmt.Sprintf("/tmp/ovsdb-%d.sock", rand.Intn(10000))
@@ -378,5 +374,145 @@ func TestUnsetOptional(t *testing.T) {
 	// verify the bridge has DatapathID unset
 	err = c.Get(context.Background(), &br)
 	require.NoError(t, err)
+	require.Nil(t, br.DatapathID)
+}
+
+func TestUpdateOptional(t *testing.T) {
+	c, close := buildTestServerAndClient(t)
+	defer close()
+	_, err := c.MonitorAll(context.Background())
+	require.NoError(t, err)
+
+	// Create the default bridge which has an optional DatapathID set
+	old := "old"
+	br := BridgeType{
+		Name:       "br-with-optional",
+		DatapathID: &old,
+	}
+	ops, err := c.Create(&br)
+	require.NoError(t, err)
+	r, err := c.Transact(context.Background(), ops...)
+	require.NoError(t, err)
+	_, err = ovsdb.CheckOperationResults(r, ops)
+	require.NoError(t, err)
+
+	// verify the bridge has DatapathID set
+	err = c.Get(context.Background(), &br)
+	require.NoError(t, err)
+	require.NotNil(t, br.DatapathID)
+
+	// modify bridge to update DatapathID
+	new := "new"
+	br.DatapathID = &new
+	ops, err = c.Where(&br).Update(&br, &br.DatapathID)
+	require.NoError(t, err)
+	r, err = c.Transact(context.Background(), ops...)
+	require.NoError(t, err)
+	_, err = ovsdb.CheckOperationResults(r, ops)
+	require.NoError(t, err)
+
+	// verify the bridge has DatapathID updated
+	err = c.Get(context.Background(), &br)
+	require.NoError(t, err)
+	require.Equal(t, &new, br.DatapathID)
+}
+
+func TestMultipleOpsSameRow(t *testing.T) {
+	c, close := buildTestServerAndClient(t)
+	defer close()
+	_, err := c.MonitorAll(context.Background())
+	require.NoError(t, err)
+
+	var ops []ovsdb.Operation
+	var op []ovsdb.Operation
+
+	// Insert a bridge
+	bridgeInsertOp := len(ops)
+	bridgeUUID := "bridge_multiple_ops_same_row"
+	datapathID := "datapathID"
+	br := BridgeType{
+		UUID:        bridgeUUID,
+		Name:        bridgeUUID,
+		DatapathID:  &datapathID,
+		Ports:       []string{"port10", "port1"},
+		ExternalIds: map[string]string{"key1": "value1"},
+	}
+	op, err = c.Create(&br)
+	require.NoError(t, err)
+	ops = append(ops, op...)
+
+	results, err := c.Transact(context.TODO(), ops...)
+	require.NoError(t, err)
+
+	_, err = ovsdb.CheckOperationResults(results, ops)
+	require.NoError(t, err)
+
+	// find out the real bridge UUID
+	bridgeUUID = results[bridgeInsertOp].UUID.GoUUID
+
+	ops = []ovsdb.Operation{}
+
+	// Do several ops with the bridge in the same transaction
+	br.Ports = []string{"port10"}
+	br.ExternalIds = map[string]string{"key1": "value1", "key10": "value10"}
+	op, err = c.Where(&br).Update(&br, &br.Ports, &br.ExternalIds)
+	require.NoError(t, err)
+	ops = append(ops, op...)
+
+	op, err = c.Where(&br).Mutate(&br,
+		model.Mutation{
+			Field:   &br.ExternalIds,
+			Mutator: ovsdb.MutateOperationInsert,
+			Value:   map[string]string{"keyA": "valueA"},
+		},
+		model.Mutation{
+			Field:   &br.Ports,
+			Mutator: ovsdb.MutateOperationInsert,
+			Value:   []string{"port1"},
+		},
+	)
+	require.NoError(t, err)
+	ops = append(ops, op...)
+
+	op, err = c.Where(&br).Mutate(&br,
+		model.Mutation{
+			Field:   &br.ExternalIds,
+			Mutator: ovsdb.MutateOperationDelete,
+			Value:   map[string]string{"key10": "value10"},
+		},
+		model.Mutation{
+			Field:   &br.Ports,
+			Mutator: ovsdb.MutateOperationDelete,
+			Value:   []string{"port10"},
+		},
+	)
+	require.NoError(t, err)
+	ops = append(ops, op...)
+
+	datapathID = "datapathID_updated"
+	op, err = c.Where(&br).Update(&br, &br.DatapathID)
+	require.NoError(t, err)
+	ops = append(ops, op...)
+
+	br.DatapathID = nil
+	op, err = c.Where(&br).Update(&br, &br.DatapathID)
+	require.NoError(t, err)
+	ops = append(ops, op...)
+
+	results, err = c.Transact(context.TODO(), ops...)
+	require.NoError(t, err)
+	require.Len(t, results, len(ops))
+
+	errors, err := ovsdb.CheckOperationResults(results, ops)
+	require.NoError(t, err)
+	require.Nil(t, errors)
+
+	br = BridgeType{
+		UUID: bridgeUUID,
+	}
+	err = c.Get(context.TODO(), &br)
+	require.NoError(t, err)
+	require.Equal(t, []string{"port1"}, br.Ports)
+	require.Equal(t, map[string]string{"key1": "value1", "keyA": "valueA"}, br.ExternalIds)
 	require.Nil(t, br.DatapathID)
 }

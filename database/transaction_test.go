@@ -1,7 +1,6 @@
 package database
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -17,26 +16,15 @@ import (
 )
 
 func TestWaitOpEquals(t *testing.T) {
-	defDB, err := model.NewClientDBModel("Open_vSwitch", map[string]model.Model{
-		"Open_vSwitch": &OvsType{},
-		"Bridge":       &BridgeType{}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	schema, err := GetSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
-	db := NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": defDB})
-	err = db.CreateDatabase("Open_vSwitch", schema)
+	dbModel, err := GetModel()
 	require.NoError(t, err)
-	dbModel, errs := model.NewDatabaseModel(schema, defDB)
-	require.Empty(t, errs)
+	db := NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": dbModel.Client()})
+	err = db.CreateDatabase("Open_vSwitch", dbModel.Schema)
+	require.NoError(t, err)
+	m := mapper.NewMapper(dbModel.Schema)
 
 	ovsUUID := uuid.NewString()
 	bridgeUUID := uuid.NewString()
-
-	m := mapper.NewMapper(schema)
 
 	ovs := OvsType{}
 	info, err := dbModel.NewModelInfo(&ovs)
@@ -59,16 +47,29 @@ func TestWaitOpEquals(t *testing.T) {
 
 	transaction := NewTransaction(dbModel, "Open_vSwitch", db, nil)
 
-	res, updates := transaction.Insert("Open_vSwitch", ovsUUID, ovsRow)
+	operation := ovsdb.Operation{
+		Op:       ovsdb.OperationInsert,
+		Table:    "Open_vSwitch",
+		UUIDName: ovsUUID,
+		Row:      ovsRow,
+	}
+	res, updates := transaction.Insert(&operation)
 	_, err = ovsdb.CheckOperationResults([]ovsdb.OperationResult{res}, []ovsdb.Operation{{Op: "insert"}})
 	require.Nil(t, err)
 
-	res, update2 := transaction.Insert("Bridge", bridgeUUID, bridgeRow)
+	operation = ovsdb.Operation{
+		Op:       ovsdb.OperationInsert,
+		Table:    "Bridge",
+		UUIDName: bridgeUUID,
+		Row:      bridgeRow,
+	}
+	res, update2 := transaction.Insert(&operation)
 	_, err = ovsdb.CheckOperationResults([]ovsdb.OperationResult{res}, []ovsdb.Operation{{Op: "insert"}})
 	require.Nil(t, err)
 
-	updates.Merge(update2)
-	err = db.Commit("Open_vSwitch", uuid.New(), updates)
+	err = updates.Merge(dbModel, *update2)
+	require.NoError(t, err)
+	err = db.Commit("Open_vSwitch", uuid.New(), *updates)
 	require.NoError(t, err)
 
 	timeout := 0
@@ -142,26 +143,15 @@ func TestWaitOpEquals(t *testing.T) {
 }
 
 func TestWaitOpNotEquals(t *testing.T) {
-	defDB, err := model.NewClientDBModel("Open_vSwitch", map[string]model.Model{
-		"Open_vSwitch": &OvsType{},
-		"Bridge":       &BridgeType{}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	schema, err := GetSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
-	db := NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": defDB})
-	err = db.CreateDatabase("Open_vSwitch", schema)
+	dbModel, err := GetModel()
 	require.NoError(t, err)
-	dbModel, errs := model.NewDatabaseModel(schema, defDB)
-	require.Empty(t, errs)
+	db := NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": dbModel.Client()})
+	err = db.CreateDatabase("Open_vSwitch", dbModel.Schema)
+	require.NoError(t, err)
+	m := mapper.NewMapper(dbModel.Schema)
 
 	ovsUUID := uuid.NewString()
 	bridgeUUID := uuid.NewString()
-
-	m := mapper.NewMapper(schema)
 
 	ovs := OvsType{}
 	info, err := dbModel.NewModelInfo(&ovs)
@@ -184,16 +174,29 @@ func TestWaitOpNotEquals(t *testing.T) {
 
 	transaction := NewTransaction(dbModel, "Open_vSwitch", db, nil)
 
-	res, updates := transaction.Insert("Open_vSwitch", ovsUUID, ovsRow)
+	operation := ovsdb.Operation{
+		Op:       ovsdb.OperationInsert,
+		Table:    "Open_vSwitch",
+		UUIDName: ovsUUID,
+		Row:      ovsRow,
+	}
+	res, updates := transaction.Insert(&operation)
 	_, err = ovsdb.CheckOperationResults([]ovsdb.OperationResult{res}, []ovsdb.Operation{{Op: "insert"}})
 	require.Nil(t, err)
 
-	res, update2 := transaction.Insert("Bridge", bridgeUUID, bridgeRow)
+	operation = ovsdb.Operation{
+		Op:       ovsdb.OperationInsert,
+		Table:    "Bridge",
+		UUIDName: bridgeUUID,
+		Row:      bridgeRow,
+	}
+	res, update2 := transaction.Insert(&operation)
 	_, err = ovsdb.CheckOperationResults([]ovsdb.OperationResult{res}, []ovsdb.Operation{{Op: "insert"}})
 	require.Nil(t, err)
 
-	updates.Merge(update2)
-	err = db.Commit("Open_vSwitch", uuid.New(), updates)
+	err = updates.Merge(dbModel, *update2)
+	require.NoError(t, err)
+	err = db.Commit("Open_vSwitch", uuid.New(), *updates)
 	require.NoError(t, err)
 
 	timeout := 0
@@ -260,26 +263,15 @@ func TestWaitOpNotEquals(t *testing.T) {
 }
 
 func TestMutateOp(t *testing.T) {
-	defDB, err := model.NewClientDBModel("Open_vSwitch", map[string]model.Model{
-		"Open_vSwitch": &OvsType{},
-		"Bridge":       &BridgeType{}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	schema, err := GetSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
-	db := NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": defDB})
-	err = db.CreateDatabase("Open_vSwitch", schema)
+	dbModel, err := GetModel()
 	require.NoError(t, err)
-	dbModel, errs := model.NewDatabaseModel(schema, defDB)
-	require.Empty(t, errs)
+	db := NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": dbModel.Client()})
+	err = db.CreateDatabase("Open_vSwitch", dbModel.Schema)
+	require.NoError(t, err)
+	m := mapper.NewMapper(dbModel.Schema)
 
 	ovsUUID := uuid.NewString()
 	bridgeUUID := uuid.NewString()
-
-	m := mapper.NewMapper(schema)
 
 	ovs := OvsType{}
 	info, err := dbModel.NewModelInfo(&ovs)
@@ -302,29 +294,40 @@ func TestMutateOp(t *testing.T) {
 
 	transaction := NewTransaction(dbModel, "Open_vSwitch", db, nil)
 
-	res, updates := transaction.Insert("Open_vSwitch", ovsUUID, ovsRow)
+	operation := ovsdb.Operation{
+		Op:       ovsdb.OperationInsert,
+		Table:    "Open_vSwitch",
+		UUIDName: ovsUUID,
+		Row:      ovsRow,
+	}
+	res, updates := transaction.Insert(&operation)
 	_, err = ovsdb.CheckOperationResults([]ovsdb.OperationResult{res}, []ovsdb.Operation{{Op: "insert"}})
 	require.Nil(t, err)
 
-	res, update2 := transaction.Insert("Bridge", bridgeUUID, bridgeRow)
+	operation = ovsdb.Operation{
+		Op:       ovsdb.OperationInsert,
+		Table:    "Bridge",
+		UUIDName: bridgeUUID,
+		Row:      bridgeRow,
+	}
+	res, update2 := transaction.Insert(&operation)
 	_, err = ovsdb.CheckOperationResults([]ovsdb.OperationResult{res}, []ovsdb.Operation{{Op: "insert"}})
 	require.Nil(t, err)
 
-	updates.Merge(update2)
-	err = db.Commit("Open_vSwitch", uuid.New(), updates)
+	err = updates.Merge(dbModel, *update2)
+	require.NoError(t, err)
+	err = db.Commit("Open_vSwitch", uuid.New(), *updates)
 	require.NoError(t, err)
 
-	gotResult, gotUpdate := transaction.Mutate(
-		"Open_vSwitch",
-		[]ovsdb.Condition{
-			ovsdb.NewCondition("_uuid", ovsdb.ConditionEqual, ovsdb.UUID{GoUUID: ovsUUID}),
-		},
-		[]ovsdb.Mutation{
-			*ovsdb.NewMutation("bridges", ovsdb.MutateOperationInsert, ovsdb.UUID{GoUUID: bridgeUUID}),
-		},
-	)
+	operation = ovsdb.Operation{
+		Op:        ovsdb.OperationMutate,
+		Table:     "Open_vSwitch",
+		Where:     []ovsdb.Condition{ovsdb.NewCondition("_uuid", ovsdb.ConditionEqual, ovsdb.UUID{GoUUID: ovsUUID})},
+		Mutations: []ovsdb.Mutation{*ovsdb.NewMutation("bridges", ovsdb.MutateOperationInsert, ovsdb.UUID{GoUUID: bridgeUUID})},
+	}
+	gotResult, gotUpdate := transaction.Mutate(&operation)
 	assert.Equal(t, ovsdb.OperationResult{Count: 1}, gotResult)
-	err = db.Commit("Open_vSwitch", uuid.New(), gotUpdate)
+	err = db.Commit("Open_vSwitch", uuid.New(), *gotUpdate)
 	require.NoError(t, err)
 
 	bridgeSet, err := ovsdb.NewOvsSet([]ovsdb.UUID{{GoUUID: bridgeUUID}})
@@ -346,22 +349,23 @@ func TestMutateOp(t *testing.T) {
 				},
 			},
 		},
-	}, gotUpdate)
+	}, getTableUpdates(*gotUpdate))
 
 	keyDelete, err := ovsdb.NewOvsSet([]string{"foo"})
 	assert.Nil(t, err)
 	keyValueDelete, err := ovsdb.NewOvsMap(map[string]string{"baz": "quux"})
 	assert.Nil(t, err)
-	gotResult, gotUpdate = transaction.Mutate(
-		"Bridge",
-		[]ovsdb.Condition{
-			ovsdb.NewCondition("_uuid", ovsdb.ConditionEqual, ovsdb.UUID{GoUUID: bridgeUUID}),
-		},
-		[]ovsdb.Mutation{
+
+	operation = ovsdb.Operation{
+		Op:    ovsdb.OperationMutate,
+		Table: "Bridge",
+		Where: []ovsdb.Condition{ovsdb.NewCondition("_uuid", ovsdb.ConditionEqual, ovsdb.UUID{GoUUID: bridgeUUID})},
+		Mutations: []ovsdb.Mutation{
 			*ovsdb.NewMutation("external_ids", ovsdb.MutateOperationDelete, keyDelete),
 			*ovsdb.NewMutation("external_ids", ovsdb.MutateOperationDelete, keyValueDelete),
 		},
-	)
+	}
+	gotResult, gotUpdate = transaction.Mutate(&operation)
 	assert.Equal(t, ovsdb.OperationResult{Count: 1}, gotResult)
 
 	oldExternalIds, _ := ovsdb.NewOvsMap(bridge.ExternalIds)
@@ -370,166 +374,22 @@ func TestMutateOp(t *testing.T) {
 
 	assert.Nil(t, err)
 
-	gotModify := *gotUpdate["Bridge"][bridgeUUID].Modify
-	gotOld := *gotUpdate["Bridge"][bridgeUUID].Old
-	gotNew := *gotUpdate["Bridge"][bridgeUUID].New
+	gotModify := *getTableUpdates(*gotUpdate)["Bridge"][bridgeUUID].Modify
+	gotOld := *getTableUpdates(*gotUpdate)["Bridge"][bridgeUUID].Old
+	gotNew := *getTableUpdates(*gotUpdate)["Bridge"][bridgeUUID].New
 	assert.Equal(t, diffExternalIds, gotModify["external_ids"])
 	assert.Equal(t, oldExternalIds, gotOld["external_ids"])
 	assert.Equal(t, newExternalIds, gotNew["external_ids"])
 }
 
-func TestDiff(t *testing.T) {
-	originSet, _ := ovsdb.NewOvsSet([]interface{}{"foo"})
-
-	originSetAdd, _ := ovsdb.NewOvsSet([]interface{}{"bar"})
-	setAddDiffSingleValue := originSetAdd
-	setAddDiffMultipleValues, _ := ovsdb.NewOvsSet([]interface{}{"foo", "bar"})
-
-	originSetDel, _ := ovsdb.NewOvsSet([]interface{}{})
-	setDelDiffSingleValue := originSetDel
-	setDelDiffMultipleValues, _ := ovsdb.NewOvsSet([]interface{}{"foo"})
-
-	originMap, _ := ovsdb.NewOvsMap(map[interface{}]interface{}{"foo": "bar"})
-
-	originMapAdd, _ := ovsdb.NewOvsMap(map[interface{}]interface{}{"foo": "bar", "baz": "quux"})
-	originMapAddDiff, _ := ovsdb.NewOvsMap(map[interface{}]interface{}{"baz": "quux"})
-
-	originMapDel, _ := ovsdb.NewOvsMap(map[interface{}]interface{}{})
-	originMapDelDiff, _ := ovsdb.NewOvsMap(map[interface{}]interface{}{"foo": "bar"})
-
-	originMapReplace, _ := ovsdb.NewOvsMap(map[interface{}]interface{}{"foo": "baz"})
-	originMapReplaceDiff, _ := ovsdb.NewOvsMap(map[interface{}]interface{}{"foo": "baz"})
-
-	singleValueSet := `{
-		"type": {
-			"key": {
-				"type": "string"
-			},
-			"min": 0,
-			"max": 1
-		}
-	}`
-	singleValueSetSchema := ovsdb.ColumnSchema{}
-	err := json.Unmarshal([]byte(singleValueSet), &singleValueSetSchema)
-	require.NoError(t, err)
-
-	multipleValueSet := `{
-		"type": {
-			"key": {
-				"type": "string"
-			},
-			"min": 0,
-			"max": 2
-		}
-	}`
-	multipleValueSetSchema := ovsdb.ColumnSchema{}
-	err = json.Unmarshal([]byte(multipleValueSet), &multipleValueSetSchema)
-	require.NoError(t, err)
-
-	tests := []struct {
-		name     string
-		schema   *ovsdb.ColumnSchema
-		a        interface{}
-		b        interface{}
-		expected interface{}
-	}{
-		{
-			"add to set, max == 1",
-			&singleValueSetSchema,
-			originSet,
-			originSetAdd,
-			setAddDiffSingleValue,
-		},
-		{
-			"add to set, max > 1",
-			&multipleValueSetSchema,
-			originSet,
-			originSetAdd,
-			setAddDiffMultipleValues,
-		},
-		{
-			"delete from set, max == 1",
-			&singleValueSetSchema,
-			originSet,
-			originSetDel,
-			setDelDiffSingleValue,
-		},
-		{
-			"delete from set, max > 1",
-			&multipleValueSetSchema,
-			originSet,
-			originSetDel,
-			setDelDiffMultipleValues,
-		},
-		{
-			"noop set, max == 1",
-			&singleValueSetSchema,
-			originSet,
-			originSet,
-			originSet,
-		},
-		{
-			"noop set, max > 1",
-			&multipleValueSetSchema,
-			originSet,
-			originSet,
-			nil,
-		},
-		{
-			"add to map",
-			nil,
-			originMap,
-			originMapAdd,
-			originMapAddDiff,
-		},
-		{
-			"delete from map",
-			nil,
-			originMap,
-			originMapDel,
-			originMapDelDiff,
-		},
-		{
-			"replace in map",
-			nil,
-			originMap,
-			originMapReplace,
-			originMapReplaceDiff,
-		},
-		{
-			"noop map",
-			nil,
-			originMap,
-			originMap,
-			nil,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			res := diff(tt.schema, tt.a, tt.b)
-			assert.Equal(t, tt.expected, res)
-		})
-	}
-}
-
 func TestOvsdbServerInsert(t *testing.T) {
 	t.Skip("need a helper for comparing rows as map elements aren't in same order")
-	defDB, err := model.NewClientDBModel("Open_vSwitch", map[string]model.Model{
-		"Open_vSwitch": &OvsType{},
-		"Bridge":       &BridgeType{}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	schema, err := GetSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
-	db := NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": defDB})
-	err = db.CreateDatabase("Open_vSwitch", schema)
+	dbModel, err := GetModel()
 	require.NoError(t, err)
-	dbModel, errs := model.NewDatabaseModel(schema, defDB)
-	require.Empty(t, errs)
-	m := mapper.NewMapper(schema)
+	db := NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": dbModel.Client()})
+	err = db.CreateDatabase("Open_vSwitch", dbModel.Schema)
+	require.NoError(t, err)
+	m := mapper.NewMapper(dbModel.Schema)
 
 	gromit := "gromit"
 	bridge := BridgeType{
@@ -550,11 +410,17 @@ func TestOvsdbServerInsert(t *testing.T) {
 
 	transaction := NewTransaction(dbModel, "Open_vSwitch", db, nil)
 
-	res, updates := transaction.Insert("Bridge", bridgeUUID, bridgeRow)
+	operation := ovsdb.Operation{
+		Op:       ovsdb.OperationInsert,
+		Table:    "Bridge",
+		UUIDName: bridgeUUID,
+		Row:      bridgeRow,
+	}
+	res, updates := transaction.Insert(&operation)
 	_, err = ovsdb.CheckOperationResults([]ovsdb.OperationResult{res}, []ovsdb.Operation{{Op: "insert"}})
 	require.NoError(t, err)
 
-	err = db.Commit("Open_vSwitch", uuid.New(), updates)
+	err = db.Commit("Open_vSwitch", uuid.New(), *updates)
 	assert.NoError(t, err)
 
 	bridge.UUID = bridgeUUID
@@ -572,22 +438,12 @@ func TestOvsdbServerInsert(t *testing.T) {
 }
 
 func TestOvsdbServerUpdate(t *testing.T) {
-	defDB, err := model.NewClientDBModel("Open_vSwitch", map[string]model.Model{
-		"Open_vSwitch": &OvsType{},
-		"Bridge":       &BridgeType{}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	schema, err := GetSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
-	db := NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": defDB})
-	err = db.CreateDatabase("Open_vSwitch", schema)
+	dbModel, err := GetModel()
 	require.NoError(t, err)
-	dbModel, errs := model.NewDatabaseModel(schema, defDB)
-	require.Empty(t, errs)
-	m := mapper.NewMapper(schema)
+	db := NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": dbModel.Client()})
+	err = db.CreateDatabase("Open_vSwitch", dbModel.Schema)
+	require.NoError(t, err)
+	m := mapper.NewMapper(dbModel.Schema)
 
 	christmas := "christmas"
 	bridge := BridgeType{
@@ -607,11 +463,17 @@ func TestOvsdbServerUpdate(t *testing.T) {
 
 	transaction := NewTransaction(dbModel, "Open_vSwitch", db, nil)
 
-	res, updates := transaction.Insert("Bridge", bridgeUUID, bridgeRow)
+	operation := ovsdb.Operation{
+		Op:       ovsdb.OperationInsert,
+		Table:    "Bridge",
+		UUIDName: bridgeUUID,
+		Row:      bridgeRow,
+	}
+	res, updates := transaction.Insert(&operation)
 	_, err = ovsdb.CheckOperationResults([]ovsdb.OperationResult{res}, []ovsdb.Operation{{Op: "insert"}})
 	require.NoError(t, err)
 
-	err = db.Commit("Open_vSwitch", uuid.New(), updates)
+	err = db.Commit("Open_vSwitch", uuid.New(), *updates)
 	assert.NoError(t, err)
 
 	halloween, _ := ovsdb.NewOvsSet([]string{"halloween"})
@@ -660,11 +522,15 @@ func TestOvsdbServerUpdate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res, updates := transaction.Update(
-				"Bridge",
-				[]ovsdb.Condition{{
+			op := ovsdb.Operation{
+				Op:    ovsdb.OperationUpdate,
+				Table: "Bridge",
+				Where: []ovsdb.Condition{{
 					Column: "_uuid", Function: ovsdb.ConditionEqual, Value: ovsdb.UUID{GoUUID: bridgeUUID},
-				}}, tt.row)
+				}},
+				Row: tt.row,
+			}
+			res, updates := transaction.Update(&op)
 			errs, err := ovsdb.CheckOperationResults([]ovsdb.OperationResult{res}, []ovsdb.Operation{{Op: "update"}})
 			require.NoErrorf(t, err, "%+v", errs)
 
@@ -673,27 +539,17 @@ func TestOvsdbServerUpdate(t *testing.T) {
 			assert.NoError(t, err)
 			br := row.(*BridgeType)
 			assert.NotEqual(t, br, bridgeRow)
-			assert.Equal(t, tt.expected.Modify, updates["Bridge"][bridgeUUID].Modify)
+			assert.Equal(t, tt.expected.Modify, getTableUpdates(*updates)["Bridge"][bridgeUUID].Modify)
 		})
 	}
 }
 
 func TestMultipleOps(t *testing.T) {
-	defDB, err := model.NewClientDBModel("Open_vSwitch", map[string]model.Model{
-		"Open_vSwitch": &OvsType{},
-		"Bridge":       &BridgeType{}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	schema, err := GetSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
-	db := NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": defDB})
-	err = db.CreateDatabase("Open_vSwitch", schema)
+	dbModel, err := GetModel()
 	require.NoError(t, err)
-	dbModel, errs := model.NewDatabaseModel(schema, defDB)
-	require.Empty(t, errs)
+	db := NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": dbModel.Client()})
+	err = db.CreateDatabase("Open_vSwitch", dbModel.Schema)
+	require.NoError(t, err)
 
 	var ops []ovsdb.Operation
 	var op ovsdb.Operation
@@ -716,7 +572,8 @@ func TestMultipleOps(t *testing.T) {
 			ovsdb.NewCondition("_uuid", ovsdb.ConditionEqual, ovsdb.UUID{GoUUID: bridgeUUID}),
 		},
 		Row: ovsdb.Row{
-			"ports": ovsdb.OvsSet{GoSet: []interface{}{ovsdb.UUID{GoUUID: "port1"}, ovsdb.UUID{GoUUID: "port10"}}},
+			"ports":        ovsdb.OvsSet{GoSet: []interface{}{ovsdb.UUID{GoUUID: "port1"}, ovsdb.UUID{GoUUID: "port10"}}},
+			"external_ids": ovsdb.OvsMap{GoMap: map[interface{}]interface{}{"key1": "value1", "key10": "value10"}},
 		},
 	}
 	ops = append(ops, op)
@@ -733,8 +590,6 @@ func TestMultipleOps(t *testing.T) {
 	assert.Empty(t, results[1].Error)
 
 	ops = ops[:0]
-	portA, err := ovsdb.NewOvsSet([]ovsdb.UUID{{GoUUID: "portA"}})
-	require.NoError(t, err)
 	op = ovsdb.Operation{
 		Table: "Bridge",
 		Where: []ovsdb.Condition{
@@ -742,13 +597,12 @@ func TestMultipleOps(t *testing.T) {
 		},
 		Op: ovsdb.OperationMutate,
 		Mutations: []ovsdb.Mutation{
-			*ovsdb.NewMutation("ports", ovsdb.MutateOperationInsert, portA),
+			*ovsdb.NewMutation("external_ids", ovsdb.MutateOperationInsert, ovsdb.OvsMap{GoMap: map[interface{}]interface{}{"keyA": "valueA"}}),
+			*ovsdb.NewMutation("ports", ovsdb.MutateOperationDelete, ovsdb.OvsSet{GoSet: []interface{}{ovsdb.UUID{GoUUID: "port1"}, ovsdb.UUID{GoUUID: "port10"}}}),
 		},
 	}
 	ops = append(ops, op)
 
-	portBC, err := ovsdb.NewOvsSet([]ovsdb.UUID{{GoUUID: "portB"}, {GoUUID: "portC"}})
-	require.NoError(t, err)
 	op2 := ovsdb.Operation{
 		Table: "Bridge",
 		Where: []ovsdb.Condition{
@@ -756,7 +610,8 @@ func TestMultipleOps(t *testing.T) {
 		},
 		Op: ovsdb.OperationMutate,
 		Mutations: []ovsdb.Mutation{
-			*ovsdb.NewMutation("ports", ovsdb.MutateOperationInsert, portBC),
+			*ovsdb.NewMutation("external_ids", ovsdb.MutateOperationDelete, ovsdb.OvsMap{GoMap: map[interface{}]interface{}{"key10": "value10"}}),
+			*ovsdb.NewMutation("ports", ovsdb.MutateOperationInsert, ovsdb.OvsSet{GoSet: []interface{}{ovsdb.UUID{GoUUID: "port1"}}}),
 		},
 	}
 	ops = append(ops, op2)
@@ -768,34 +623,28 @@ func TestMultipleOps(t *testing.T) {
 		assert.Equal(t, 1, result.Count)
 	}
 
-	modifiedPorts, err := ovsdb.NewOvsSet([]ovsdb.UUID{{GoUUID: "portA"}, {GoUUID: "portB"}, {GoUUID: "portC"}})
-	assert.Nil(t, err)
-
-	oldPorts, err := ovsdb.NewOvsSet([]ovsdb.UUID{{GoUUID: "port1"}, {GoUUID: "port10"}})
-	assert.Nil(t, err)
-
-	newPorts, err := ovsdb.NewOvsSet([]ovsdb.UUID{{GoUUID: "port1"}, {GoUUID: "port10"}, {GoUUID: "portA"}, {GoUUID: "portB"}, {GoUUID: "portC"}})
-	assert.Nil(t, err)
-
 	assert.Equal(t, ovsdb.TableUpdates2{
 		"Bridge": ovsdb.TableUpdate2{
 			bridgeUUID: &ovsdb.RowUpdate2{
 				Modify: &ovsdb.Row{
-					"ports": modifiedPorts,
+					"external_ids": ovsdb.OvsMap{GoMap: map[interface{}]interface{}{"keyA": "valueA", "key10": "value10"}},
+					"ports":        ovsdb.OvsSet{GoSet: []interface{}{ovsdb.UUID{GoUUID: "port10"}}},
 				},
 				Old: &ovsdb.Row{
-					"_uuid": ovsdb.UUID{GoUUID: bridgeUUID},
-					"name":  "a_bridge_to_nowhere",
-					"ports": oldPorts,
+					"_uuid":        ovsdb.UUID{GoUUID: bridgeUUID},
+					"name":         "a_bridge_to_nowhere",
+					"external_ids": ovsdb.OvsMap{GoMap: map[interface{}]interface{}{"key1": "value1", "key10": "value10"}},
+					"ports":        ovsdb.OvsSet{GoSet: []interface{}{ovsdb.UUID{GoUUID: "port1"}, ovsdb.UUID{GoUUID: "port10"}}},
 				},
 				New: &ovsdb.Row{
-					"_uuid": ovsdb.UUID{GoUUID: bridgeUUID},
-					"name":  "a_bridge_to_nowhere",
-					"ports": newPorts,
+					"_uuid":        ovsdb.UUID{GoUUID: bridgeUUID},
+					"name":         "a_bridge_to_nowhere",
+					"external_ids": ovsdb.OvsMap{GoMap: map[interface{}]interface{}{"key1": "value1", "keyA": "valueA"}},
+					"ports":        ovsdb.OvsSet{GoSet: []interface{}{ovsdb.UUID{GoUUID: "port1"}}},
 				},
 			},
 		},
-	}, updates)
+	}, getTableUpdates(updates))
 
 }
 
@@ -849,23 +698,11 @@ func TestOvsdbServerDbDoesNotExist(t *testing.T) {
 }
 
 func TestCheckIndexes(t *testing.T) {
-	clientDbModel, err := model.NewClientDBModel("Open_vSwitch", map[string]model.Model{
-		"Open_vSwitch":              &OvsType{},
-		"Bridge":                    &BridgeType{},
-		"Flow_Sample_Collector_Set": &FlowSampleCollectorSetType{},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	schema, err := GetSchema()
-	if err != nil {
-		t.Fatal(err)
-	}
-	db := NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": clientDbModel})
-	err = db.CreateDatabase("Open_vSwitch", schema)
+	dbModel, err := GetModel()
 	require.NoError(t, err)
-	dbModel, errs := model.NewDatabaseModel(schema, clientDbModel)
-	require.Empty(t, errs)
+	db := NewInMemoryDatabase(map[string]model.ClientDBModel{"Open_vSwitch": dbModel.Client()})
+	err = db.CreateDatabase("Open_vSwitch", dbModel.Schema)
+	require.NoError(t, err)
 
 	bridgeUUID := uuid.NewString()
 	fscsUUID := uuid.NewString()
@@ -1045,4 +882,18 @@ func TestCheckIndexes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func getTableUpdates(update Update) ovsdb.TableUpdates2 {
+	tus := ovsdb.TableUpdates2{}
+	tables := update.GetUpdatedTables()
+	for _, table := range tables {
+		tu := ovsdb.TableUpdate2{}
+		_ = update.ForEachRowUpdate(table, func(uuid string, row ovsdb.RowUpdate2) error {
+			tu[uuid] = &row
+			return nil
+		})
+		tus[table] = tu
+	}
+	return tus
 }

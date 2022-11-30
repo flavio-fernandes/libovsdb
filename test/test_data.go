@@ -2,7 +2,9 @@ package test
 
 import (
 	"encoding/json"
+	"fmt"
 
+	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
 )
 
@@ -154,6 +156,29 @@ type FlowSampleCollectorSetType struct {
 	ExternalIDs map[string]string `ovsdb:"external_ids"`
 	ID          int               `ovsdb:"id"`
 	IPFIX       *string           // `ovsdb:"ipfix"`
+}
+
+func GetModel() (model.DatabaseModel, error) {
+	client, err := model.NewClientDBModel(
+		"Open_vSwitch",
+		map[string]model.Model{
+			"Open_vSwitch":              &OvsType{},
+			"Bridge":                    &BridgeType{},
+			"Flow_Sample_Collector_Set": &FlowSampleCollectorSetType{},
+		},
+	)
+	if err != nil {
+		return model.DatabaseModel{}, err
+	}
+	schema, err := GetSchema()
+	if err != nil {
+		return model.DatabaseModel{}, err
+	}
+	dbModel, errs := model.NewDatabaseModel(schema, client)
+	if len(errs) > 0 {
+		return model.DatabaseModel{}, fmt.Errorf("errors build model: %v", errs)
+	}
+	return dbModel, nil
 }
 
 func GetSchema() (ovsdb.DatabaseSchema, error) {

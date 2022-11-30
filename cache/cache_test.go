@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"reflect"
 	"testing"
 
 	"github.com/go-logr/logr"
 	"github.com/ovn-org/libovsdb/model"
 	"github.com/ovn-org/libovsdb/ovsdb"
+	"github.com/ovn-org/libovsdb/test"
+	"github.com/ovn-org/libovsdb/updates"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1432,7 +1433,7 @@ func TestTableCache_populate(t *testing.T) {
 	tc, err := NewTableCache(dbModel, nil, nil)
 	assert.Nil(t, err)
 
-	testRow := ovsdb.Row(map[string]interface{}{"_uuid": "test", "foo": "bar"})
+	testRow := ovsdb.Row(map[string]interface{}{"_uuid": ovsdb.UUID{GoUUID: "test"}, "foo": "bar"})
 	testRowModel := &testModel{UUID: "test", Foo: "bar"}
 	updates := ovsdb.TableUpdates{
 		"Open_vSwitch": {
@@ -1449,7 +1450,7 @@ func TestTableCache_populate(t *testing.T) {
 	assert.Equal(t, testRowModel, got)
 
 	t.Log("Update")
-	updatedRow := ovsdb.Row(map[string]interface{}{"_uuid": "test", "foo": "quux"})
+	updatedRow := ovsdb.Row(map[string]interface{}{"_uuid": ovsdb.UUID{GoUUID: "test"}, "foo": "quux"})
 	updatedRowModel := &testModel{UUID: "test", Foo: "quux"}
 	updates["Open_vSwitch"]["test"] = &ovsdb.RowUpdate{
 		Old: &testRow,
@@ -1486,7 +1487,7 @@ func TestTableCachePopulate(t *testing.T) {
 	tc, err := NewTableCache(dbModel, nil, nil)
 	assert.Nil(t, err)
 
-	testRow := ovsdb.Row(map[string]interface{}{"_uuid": "test", "foo": "bar"})
+	testRow := ovsdb.Row(map[string]interface{}{"_uuid": ovsdb.UUID{GoUUID: "test"}, "foo": "bar"})
 	testRowModel := &testModel{UUID: "test", Foo: "bar"}
 	updates := ovsdb.TableUpdates{
 		"Open_vSwitch": {
@@ -1503,7 +1504,7 @@ func TestTableCachePopulate(t *testing.T) {
 	assert.Equal(t, testRowModel, got)
 
 	t.Log("Update")
-	updatedRow := ovsdb.Row(map[string]interface{}{"_uuid": "test", "foo": "quux"})
+	updatedRow := ovsdb.Row(map[string]interface{}{"_uuid": ovsdb.UUID{GoUUID: "test"}, "foo": "quux"})
 	updatedRowModel := &testModel{UUID: "test", Foo: "quux"}
 	updates["Open_vSwitch"]["test"] = &ovsdb.RowUpdate{
 		Old: &testRow,
@@ -1990,50 +1991,6 @@ func BenchmarkPopulate2UpdateArray(b *testing.B) {
 	}
 }
 
-func BenchmarkTableCacheApplyModificationsSet(b *testing.B) {
-	type testDBModel struct {
-		UUID string   `ovsdb:"_uuid"`
-		Set  []string `ovsdb:"set"`
-	}
-	aFooSet, _ := ovsdb.NewOvsSet([]string{"foo"})
-	base := &testDBModel{Set: []string{}}
-	for i := 0; i < 57000; i++ {
-		base.Set = append(base.Set, fmt.Sprintf("foo%d", i))
-	}
-
-	db, err := model.NewClientDBModel("Open_vSwitch", map[string]model.Model{"Open_vSwitch": &testDBModel{}})
-	assert.Nil(b, err)
-	var schema ovsdb.DatabaseSchema
-	err = json.Unmarshal([]byte(`
-	  {
-		"name": "Open_vSwitch",
-		"tables": {
-		  "Open_vSwitch": {
-			"columns": {
-			  "set": { "type": { "key": { "type": "string" }, "min": 0, "max": "unlimited" } }
-			}
-		  }
-		}
-	  }
-	`), &schema)
-	require.NoError(b, err)
-	dbModel, errs := model.NewDatabaseModel(schema, db)
-	require.Empty(b, errs)
-	tc, err := NewTableCache(dbModel, nil, nil)
-	assert.Nil(b, err)
-
-	bases := make([]*testDBModel, b.N)
-	for n := 0; n < b.N; n++ {
-		bases[n] = model.Clone(base).(*testDBModel)
-	}
-
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		_, err = tc.ApplyModifications("Open_vSwitch", bases[n], ovsdb.Row{"set": aFooSet})
-		require.NoError(b, err)
-	}
-}
-
 func TestTableCacheRowByModelTwoIndexes(t *testing.T) {
 	var schema ovsdb.DatabaseSchema
 	db, err := model.NewClientDBModel("Open_vSwitch", map[string]model.Model{"Open_vSwitch": &testModel{}})
@@ -2107,214 +2064,6 @@ func TestTableCacheRowByModelMultiIndex(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Nil(t, baz)
 	})
-}
-
-func TestTableCacheApplyModifications(t *testing.T) {
-	type testDBModel struct {
-		UUID  string            `ovsdb:"_uuid"`
-		Value string            `ovsdb:"value"`
-		Set   []string          `ovsdb:"set"`
-		Map   map[string]string `ovsdb:"map"`
-		Map2  map[string]string `ovsdb:"map2"`
-		Ptr   *string           `ovsdb:"ptr"`
-		Ptr2  *string           `ovsdb:"ptr2"`
-	}
-	aEmptySet, _ := ovsdb.NewOvsSet([]string{})
-	aFooSet, _ := ovsdb.NewOvsSet([]string{"foo"})
-	aFooBarSet, _ := ovsdb.NewOvsSet([]string{"foo", "bar"})
-	aFooBarBazQuxSet, _ := ovsdb.NewOvsSet([]string{"foo", "bar", "baz", "qux"})
-	aFooMap, _ := ovsdb.NewOvsMap(map[string]string{"foo": "bar"})
-	aBarMap, _ := ovsdb.NewOvsMap(map[string]string{"bar": "baz"})
-	aBarBazMap, _ := ovsdb.NewOvsMap(map[string]string{
-		"bar": "baz",
-		"baz": "quux",
-	})
-	wallace := "wallace"
-	aWallaceSet, _ := ovsdb.NewOvsSet([]string{wallace})
-	gromit := "gromit"
-	aWallaceGromitSet, _ := ovsdb.NewOvsSet([]string{wallace, gromit})
-	tests := []struct {
-		name           string
-		update         ovsdb.Row
-		base           *testDBModel
-		expected       *testDBModel
-		changeExpected bool
-		errorExpected  bool
-	}{
-		{
-			"replace value",
-			ovsdb.Row{"value": "bar"},
-			&testDBModel{Value: "foo"},
-			&testDBModel{Value: "bar"},
-			true,
-			false,
-		},
-		{
-			"noop",
-			ovsdb.Row{"value": "bar"},
-			&testDBModel{Value: "bar"},
-			&testDBModel{Value: "bar"},
-			false,
-			false,
-		},
-		{
-			"add to set",
-			ovsdb.Row{"set": aFooSet},
-			&testDBModel{Set: []string{}},
-			&testDBModel{Set: []string{"foo"}},
-			true,
-			false,
-		},
-		{
-			"remove from set",
-			ovsdb.Row{"set": aFooSet},
-			&testDBModel{Set: []string{"foo"}},
-			&testDBModel{Set: []string{}},
-			true,
-			false,
-		},
-		{
-			"add and remove from set",
-			ovsdb.Row{"set": aFooBarSet},
-			&testDBModel{Set: []string{"foo"}},
-			&testDBModel{Set: []string{"bar"}},
-			true,
-			false,
-		},
-		{
-			"add and remove multiples from set",
-			ovsdb.Row{"set": aFooBarBazQuxSet},
-			&testDBModel{Set: []string{"foo", "bar"}},
-			&testDBModel{Set: []string{"baz", "qux"}},
-			true,
-			false,
-		},
-		{
-			"replace map value",
-			ovsdb.Row{"map": aFooMap},
-			&testDBModel{Map: map[string]string{"foo": "baz"}},
-			&testDBModel{Map: map[string]string{"foo": "bar"}},
-			true,
-			false,
-		},
-		{
-			"add map key",
-			ovsdb.Row{"map": aBarMap},
-			&testDBModel{Map: map[string]string{"foo": "bar"}},
-			&testDBModel{Map: map[string]string{"foo": "bar", "bar": "baz"}},
-			true,
-			false,
-		},
-		{
-			"delete map key",
-			ovsdb.Row{"map": aFooMap},
-			&testDBModel{Map: map[string]string{"foo": "bar"}},
-			&testDBModel{Map: nil},
-			true,
-			false,
-		},
-		{
-			"multiple map operations",
-			ovsdb.Row{"map": aBarBazMap, "map2": aFooMap},
-			&testDBModel{Map: map[string]string{"foo": "bar"}},
-			&testDBModel{
-				Map:  map[string]string{"foo": "bar", "bar": "baz", "baz": "quux"},
-				Map2: map[string]string{"foo": "bar"},
-			},
-			true,
-			false,
-		},
-		{
-			"set optional value",
-			ovsdb.Row{"ptr": aWallaceSet, "ptr2": aWallaceSet},
-			&testDBModel{Ptr: nil, Ptr2: nil},
-			&testDBModel{Ptr: &wallace, Ptr2: &wallace},
-			true,
-			false,
-		},
-		{
-			"negative test: update received with multiple optional values",
-			ovsdb.Row{"ptr": aWallaceGromitSet, "ptr2": aWallaceGromitSet},
-			&testDBModel{Ptr: &wallace, Ptr2: &wallace},
-			&testDBModel{Ptr: &wallace, Ptr2: &wallace},
-			false,
-			true,
-		},
-		{
-			"somehow we get the same value",
-			ovsdb.Row{"ptr": aWallaceSet, "ptr2": aWallaceSet},
-			&testDBModel{Ptr: &wallace, Ptr2: &wallace},
-			&testDBModel{Ptr: &wallace, Ptr2: &wallace},
-			false,
-			false,
-		},
-		{
-			"update with empty set",
-			ovsdb.Row{"ptr": aEmptySet, "ptr2": aEmptySet},
-			&testDBModel{Ptr: &wallace, Ptr2: &wallace},
-			&testDBModel{Ptr: nil, Ptr2: nil},
-			true,
-			false,
-		},
-		{
-			"update empty set with empty set",
-			ovsdb.Row{"ptr": aEmptySet, "ptr2": aEmptySet},
-			&testDBModel{Ptr: nil, Ptr2: nil},
-			&testDBModel{Ptr: nil, Ptr2: nil},
-			false,
-			false,
-		},
-		{
-			"add to set with other columns that do not exist in client schema",
-			ovsdb.Row{"foo": "bar", "set": aFooSet, "does": "notExist"},
-			&testDBModel{Set: []string{}},
-			&testDBModel{Set: []string{"foo"}},
-			true,
-			false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			db, err := model.NewClientDBModel("Open_vSwitch", map[string]model.Model{"Open_vSwitch": &testDBModel{}})
-			assert.Nil(t, err)
-			var schema ovsdb.DatabaseSchema
-			err = json.Unmarshal([]byte(`
-			  {
-				"name": "Open_vSwitch",
-				"tables": {
-				  "Open_vSwitch": {
-				    "indexes": [["foo"]],
-					"columns": {
-					  "value": { "type": "string" },
-					  "set": { "type": { "key": { "type": "string" }, "min": 0,	"max": "unlimited" } },
-					  "map": { "type": { "key": "string", "max": "unlimited", "min": 0, "value": "string" } },
-					  "map2": { "type": { "key": "string", "max": "unlimited", "min": 0, "value": "string" } },
-					  "ptr":  { "type": { "key": { "type": "string" }, "min": 0,	"max": 1 } },
-					  "ptr2": { "type": { "key": { "type": "string" }, "min": 0,	"max": 1 } }
-					}
-				  }
-				}
-			  }
-			`), &schema)
-			require.NoError(t, err)
-			dbModel, errs := model.NewDatabaseModel(schema, db)
-			require.Empty(t, errs)
-			tc, err := NewTableCache(dbModel, nil, nil)
-			assert.Nil(t, err)
-			original := model.Clone(tt.base).(*testDBModel)
-			changed, err := tc.ApplyModifications("Open_vSwitch", original, tt.update)
-			if tt.errorExpected {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
-			require.Equal(t, tt.expected, original)
-			require.Equal(t, tt.changeExpected, changed)
-			if !reflect.DeepEqual(tt.expected, tt.base) {
-				require.NotEqual(t, tt.base, original)
-			}
-		})
-	}
 }
 
 func TestTableCacheRowsByModels(t *testing.T) {
@@ -2896,6 +2645,133 @@ func BenchmarkRowsByCondition(b *testing.B) {
 				results, err := rc.RowsByCondition(bm.prepare(rand.Intn(numRows)))
 				require.NoError(b, err)
 				require.Len(b, results, 1)
+			}
+		})
+	}
+}
+
+func BenchmarkPopulate2SingleModify(b *testing.B) {
+	type testDBModel struct {
+		UUID string   `ovsdb:"_uuid"`
+		Set  []string `ovsdb:"set"`
+	}
+	aFooSet, _ := ovsdb.NewOvsSet([]string{"foo"})
+	base := &testDBModel{Set: []string{}}
+	for i := 0; i < 57000; i++ {
+		base.Set = append(base.Set, fmt.Sprintf("foo%d", i))
+	}
+
+	db, err := model.NewClientDBModel("Open_vSwitch", map[string]model.Model{"Open_vSwitch": &testDBModel{}})
+	assert.Nil(b, err)
+	var schema ovsdb.DatabaseSchema
+	err = json.Unmarshal([]byte(`
+	  {
+		"name": "Open_vSwitch",
+		"tables": {
+		  "Open_vSwitch": {
+			"columns": {
+			  "set": { "type": { "key": { "type": "string" }, "min": 0, "max": "unlimited" } }
+			}
+		  }
+		}
+	  }
+	`), &schema)
+	require.NoError(b, err)
+	dbModel, errs := model.NewDatabaseModel(schema, db)
+	require.Empty(b, errs)
+	caches := make([]*TableCache, b.N)
+	for n := 0; n < b.N; n++ {
+		tc, err := NewTableCache(dbModel, nil, nil)
+		require.NoError(b, err)
+		caches[n] = tc
+		rc := tc.Table("Open_vSwitch")
+		err = rc.Create("uuid", base, true)
+		require.NoError(b, err)
+	}
+	tu := ovsdb.TableUpdates2{
+		"Open_vSwitch": ovsdb.TableUpdate2{
+			"uuid": &ovsdb.RowUpdate2{
+				Modify: &ovsdb.Row{"set": aFooSet},
+			},
+		},
+	}
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		err = caches[n].Populate2(tu)
+		require.NoError(b, err)
+	}
+}
+
+func TestTableCache_ApplyModelUpdates(t *testing.T) {
+	dbModel, err := test.GetModel()
+	require.NoError(t, err)
+
+	tests := []struct {
+		name     string
+		update   ovsdb.RowUpdate
+		current  model.Model
+		expected model.Model
+	}{
+		{
+			name: "create",
+			update: ovsdb.RowUpdate{
+				New: &ovsdb.Row{"name": "bridge"},
+			},
+			expected: &test.BridgeType{
+				UUID: "uuid",
+				Name: "bridge",
+			},
+		},
+		{
+			name: "update",
+			update: ovsdb.RowUpdate{
+				Old: &ovsdb.Row{"name": "bridge", "datapath_type": "old"},
+				New: &ovsdb.Row{"name": "bridge", "datapath_type": "new"},
+			},
+			current: &test.BridgeType{
+				UUID:         "uuid",
+				Name:         "bridge",
+				DatapathType: "old",
+			},
+			expected: &test.BridgeType{
+				UUID:         "uuid",
+				Name:         "bridge",
+				DatapathType: "new",
+			},
+		},
+		{
+			name: "delete",
+			update: ovsdb.RowUpdate{
+				Old: &ovsdb.Row{"name": "bridge"},
+			},
+			current: &test.BridgeType{
+				UUID: "uuid",
+				Name: "bridge",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tc, err := NewTableCache(dbModel, nil, nil)
+			require.NoError(t, err)
+			rc := tc.Table("Bridge")
+			require.NotNil(t, rc)
+			if tt.current != nil {
+				err = rc.Create("uuid", tt.current, false)
+				require.NoError(t, err)
+			}
+			updates := updates.ModelUpdates{}
+			require.NoError(t, err)
+			err = updates.AddRowUpdate(dbModel, "Bridge", "uuid", tt.current, tt.update)
+			require.NoError(t, err)
+			err = tc.ApplyCacheUpdate(updates)
+			assert.NoError(t, err)
+			model := rc.rowByUUID("uuid")
+			if tt.expected != nil {
+				assert.Equal(t, tt.expected, model)
+			} else {
+				assert.Nil(t, model)
 			}
 		})
 	}

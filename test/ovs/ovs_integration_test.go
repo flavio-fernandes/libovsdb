@@ -138,6 +138,7 @@ type bridgeType struct {
 	Status         map[string]string `ovsdb:"status"`
 	BridgeFailMode *BridgeFailMode   `ovsdb:"fail_mode"`
 	IPFIX          *string           `ovsdb:"ipfix"`
+	DatapathID     *string           `ovsdb:"datapath_id"`
 }
 
 // ovsType is the ORM model of the OVS table
@@ -919,7 +920,7 @@ func (suite *OVSIntegrationSuite) TestOpsWaitForReconnect() {
 
 func (suite *OVSIntegrationSuite) TestUnsetOptional() {
 	// Create the default bridge which has an optional BridgeFailMode set
-	uuid, err := suite.createBridge("br-with-optional")
+	uuid, err := suite.createBridge("br-with-optional-unset")
 	require.NoError(suite.T(), err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Second)
@@ -947,4 +948,203 @@ func (suite *OVSIntegrationSuite) TestUnsetOptional() {
 	err = suite.client.Get(ctx, &br)
 	require.NoError(suite.T(), err)
 	require.Nil(suite.T(), br.BridgeFailMode)
+}
+
+func (suite *OVSIntegrationSuite) TestUpdateOptional() {
+	// Create the default bridge which has an optional BridgeFailMode set
+	uuid, err := suite.createBridge("br-with-optional-update")
+	require.NoError(suite.T(), err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Second)
+	defer cancel()
+
+	br := bridgeType{
+		UUID: uuid,
+	}
+
+	// verify the bridge has BridgeFailMode set
+	err = suite.client.Get(ctx, &br)
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), &BridgeFailModeSecure, br.BridgeFailMode)
+
+	// modify bridge to update BridgeFailMode
+	br.BridgeFailMode = &BridgeFailModeStandalone
+	ops, err := suite.client.Where(&br).Update(&br, &br.BridgeFailMode)
+	require.NoError(suite.T(), err)
+	r, err := suite.client.Transact(ctx, ops...)
+	require.NoError(suite.T(), err)
+	_, err = ovsdb.CheckOperationResults(r, ops)
+	require.NoError(suite.T(), err)
+
+	// verify the bridge has BridgeFailMode updated
+	err = suite.client.Get(ctx, &br)
+	require.NoError(suite.T(), err)
+	require.Equal(suite.T(), &BridgeFailModeStandalone, br.BridgeFailMode)
+}
+
+func (suite *OVSIntegrationSuite) TestMultipleOpsSameRow() {
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Second)
+	defer cancel()
+
+	var ops []ovsdb.Operation
+	var op []ovsdb.Operation
+
+	// Use raw ops for the tables we don't have in the model, they are not the
+	// target of the test and are just used to comply with the schema
+	// referential integrity
+	iface1UUID := "iface1"
+	op = []ovsdb.Operation{
+		{
+			Op:       ovsdb.OperationInsert,
+			Table:    "Interface",
+			UUIDName: iface1UUID,
+			Row: ovsdb.Row{
+				"name": iface1UUID,
+			},
+		},
+	}
+	ops = append(ops, op...)
+	port1InsertOp := len(ops)
+	port1UUID := "port1"
+	op = []ovsdb.Operation{
+		{
+			Op:       ovsdb.OperationInsert,
+			Table:    "Port",
+			UUIDName: port1UUID,
+			Row: ovsdb.Row{
+				"name":       port1UUID,
+				"interfaces": ovsdb.OvsSet{GoSet: []interface{}{ovsdb.UUID{GoUUID: iface1UUID}}},
+			},
+		},
+	}
+	ops = append(ops, op...)
+
+	iface10UUID := "iface10"
+	op = []ovsdb.Operation{
+		{
+			Op:       ovsdb.OperationInsert,
+			Table:    "Interface",
+			UUIDName: iface10UUID,
+			Row: ovsdb.Row{
+				"name": iface10UUID,
+			},
+		},
+	}
+	ops = append(ops, op...)
+	port10InsertOp := len(ops)
+	port10UUID := "port10"
+	op = []ovsdb.Operation{
+		{
+			Op:       ovsdb.OperationInsert,
+			Table:    "Port",
+			UUIDName: port10UUID,
+			Row: ovsdb.Row{
+				"name":       port10UUID,
+				"interfaces": ovsdb.OvsSet{GoSet: []interface{}{ovsdb.UUID{GoUUID: iface10UUID}}},
+			},
+		},
+	}
+	ops = append(ops, op...)
+
+	// Insert a bridge and register it in the OVS table
+	bridgeInsertOp := len(ops)
+	bridgeUUID := "bridge_multiple_ops_same_row"
+	datapathID := "datapathID"
+	br := bridgeType{
+		UUID:        bridgeUUID,
+		Name:        bridgeUUID,
+		DatapathID:  &datapathID,
+		Ports:       []string{port10UUID, port1UUID},
+		ExternalIds: map[string]string{"key1": "value1"},
+	}
+	op, err := suite.client.Create(&br)
+	require.NoError(suite.T(), err)
+	ops = append(ops, op...)
+
+	ovs := ovsType{}
+	op, err = suite.client.WhereCache(func(*ovsType) bool { return true }).Mutate(&ovs, model.Mutation{
+		Field:   &ovs.Bridges,
+		Mutator: ovsdb.MutateOperationInsert,
+		Value:   []string{bridgeUUID},
+	})
+	require.NoError(suite.T(), err)
+	ops = append(ops, op...)
+
+	results, err := suite.client.Transact(ctx, ops...)
+	require.NoError(suite.T(), err)
+
+	_, err = ovsdb.CheckOperationResults(results, ops)
+	require.NoError(suite.T(), err)
+
+	// find out the real UUIDs
+	port1UUID = results[port1InsertOp].UUID.GoUUID
+	port10UUID = results[port10InsertOp].UUID.GoUUID
+	bridgeUUID = results[bridgeInsertOp].UUID.GoUUID
+
+	ops = []ovsdb.Operation{}
+
+	// Do several ops with the bridge in the same transaction
+	br.Ports = []string{port10UUID}
+	br.ExternalIds = map[string]string{"key1": "value1", "key10": "value10"}
+	op, err = suite.client.Where(&br).Update(&br, &br.Ports, &br.ExternalIds)
+	require.NoError(suite.T(), err)
+	ops = append(ops, op...)
+
+	op, err = suite.client.Where(&br).Mutate(&br,
+		model.Mutation{
+			Field:   &br.ExternalIds,
+			Mutator: ovsdb.MutateOperationInsert,
+			Value:   map[string]string{"keyA": "valueA"},
+		},
+		model.Mutation{
+			Field:   &br.Ports,
+			Mutator: ovsdb.MutateOperationInsert,
+			Value:   []string{port1UUID},
+		},
+	)
+	require.NoError(suite.T(), err)
+	ops = append(ops, op...)
+
+	op, err = suite.client.Where(&br).Mutate(&br,
+		model.Mutation{
+			Field:   &br.ExternalIds,
+			Mutator: ovsdb.MutateOperationDelete,
+			Value:   map[string]string{"key10": "value10"},
+		},
+		model.Mutation{
+			Field:   &br.Ports,
+			Mutator: ovsdb.MutateOperationDelete,
+			Value:   []string{port10UUID},
+		},
+	)
+	require.NoError(suite.T(), err)
+	ops = append(ops, op...)
+
+	datapathID = "datapathID_updated"
+	op, err = suite.client.Where(&br).Update(&br, &br.DatapathID)
+	require.NoError(suite.T(), err)
+	ops = append(ops, op...)
+
+	br.DatapathID = nil
+	op, err = suite.client.Where(&br).Update(&br, &br.DatapathID)
+	require.NoError(suite.T(), err)
+	ops = append(ops, op...)
+
+	results, err = suite.client.Transact(ctx, ops...)
+	require.NoError(suite.T(), err)
+
+	errors, err := ovsdb.CheckOperationResults(results, ops)
+	require.NoError(suite.T(), err)
+	require.Nil(suite.T(), errors)
+	require.Len(suite.T(), results, len(ops))
+
+	br = bridgeType{
+		UUID: bridgeUUID,
+	}
+	err = suite.client.Get(ctx, &br)
+	require.NoError(suite.T(), err)
+
+	require.Equal(suite.T(), []string{port1UUID}, br.Ports)
+	require.Equal(suite.T(), map[string]string{"key1": "value1", "keyA": "valueA"}, br.ExternalIds)
+	require.Nil(suite.T(), br.DatapathID)
 }

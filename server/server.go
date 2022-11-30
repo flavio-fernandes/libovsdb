@@ -221,32 +221,12 @@ func (o *OvsdbServer) Transact(client *rpc2.Client, args []json.RawMessage, repl
 	return o.db.Commit(db, transactionID, updates)
 }
 
-func (o *OvsdbServer) transact(name string, operations []ovsdb.Operation) ([]*ovsdb.OperationResult, ovsdb.TableUpdates2) {
+func (o *OvsdbServer) transact(name string, operations []ovsdb.Operation) ([]*ovsdb.OperationResult, database.Update) {
 	o.modelsMutex.Lock()
 	dbModel := o.models[name]
 	o.modelsMutex.Unlock()
 	transaction := database.NewTransaction(dbModel, name, o.db, &o.logger)
 	return transaction.Transact(operations)
-}
-
-func deepCopy(a ovsdb.TableUpdates) (ovsdb.TableUpdates, error) {
-	var b ovsdb.TableUpdates
-	raw, err := json.Marshal(a)
-	if err != nil {
-		return b, err
-	}
-	err = json.Unmarshal(raw, &b)
-	return b, err
-}
-
-func deepCopy2(a ovsdb.TableUpdates2) (ovsdb.TableUpdates2, error) {
-	var b ovsdb.TableUpdates2
-	raw, err := json.Marshal(a)
-	if err != nil {
-		return b, err
-	}
-	err = json.Unmarshal(raw, &b)
-	return b, err
 }
 
 // Cancel cancels the last transaction
@@ -287,13 +267,13 @@ func (o *OvsdbServer) Monitor(client *rpc2.Client, args []json.RawMessage, reply
 	tableUpdates := make(ovsdb.TableUpdates)
 	for t, request := range request {
 		rows := transaction.Select(t, nil, request.Columns)
+		if len(rows.Rows) == 0 {
+			continue
+		}
+		tableUpdates[t] = make(ovsdb.TableUpdate, len(rows.Rows))
 		for i := range rows.Rows {
-			tu := make(ovsdb.TableUpdate)
 			uuid := rows.Rows[i]["_uuid"].(ovsdb.UUID).GoUUID
-			tu[uuid] = &ovsdb.RowUpdate{
-				New: &rows.Rows[i],
-			}
-			tableUpdates.AddTableUpdate(t, tu)
+			tableUpdates[t][uuid] = &ovsdb.RowUpdate{New: &rows.Rows[i]}
 		}
 	}
 	*reply = tableUpdates
@@ -334,11 +314,13 @@ func (o *OvsdbServer) MonitorCond(client *rpc2.Client, args []json.RawMessage, r
 	tableUpdates := make(ovsdb.TableUpdates2)
 	for t, request := range request {
 		rows := transaction.Select(t, nil, request.Columns)
+		if len(rows.Rows) == 0 {
+			continue
+		}
+		tableUpdates[t] = make(ovsdb.TableUpdate2, len(rows.Rows))
 		for i := range rows.Rows {
-			tu := make(ovsdb.TableUpdate2)
 			uuid := rows.Rows[i]["_uuid"].(ovsdb.UUID).GoUUID
-			tu[uuid] = &ovsdb.RowUpdate2{Initial: &rows.Rows[i]}
-			tableUpdates.AddTableUpdate(t, tu)
+			tableUpdates[t][uuid] = &ovsdb.RowUpdate2{Initial: &rows.Rows[i]}
 		}
 	}
 	*reply = tableUpdates
@@ -379,11 +361,13 @@ func (o *OvsdbServer) MonitorCondSince(client *rpc2.Client, args []json.RawMessa
 	tableUpdates := make(ovsdb.TableUpdates2)
 	for t, request := range request {
 		rows := transaction.Select(t, nil, request.Columns)
+		if len(rows.Rows) == 0 {
+			continue
+		}
+		tableUpdates[t] = make(ovsdb.TableUpdate2, len(rows.Rows))
 		for i := range rows.Rows {
-			tu := make(ovsdb.TableUpdate2)
 			uuid := rows.Rows[i]["_uuid"].(ovsdb.UUID).GoUUID
-			tu[uuid] = &ovsdb.RowUpdate2{Initial: &rows.Rows[i]}
-			tableUpdates.AddTableUpdate(t, tu)
+			tableUpdates[t][uuid] = &ovsdb.RowUpdate2{Initial: &rows.Rows[i]}
 		}
 	}
 	*reply = ovsdb.MonitorCondSinceReply{Found: false, LastTransactionID: "00000000-0000-0000-000000000000", Updates: tableUpdates}
@@ -419,25 +403,17 @@ func (o *OvsdbServer) Echo(client *rpc2.Client, args []interface{}, reply *[]int
 	return nil
 }
 
-func (o *OvsdbServer) processMonitors(id uuid.UUID, update ovsdb.TableUpdates2) {
+func (o *OvsdbServer) processMonitors(id uuid.UUID, update database.Update) {
 	o.monitorMutex.RLock()
 	for _, c := range o.monitors {
 		for _, m := range c.monitors {
 			switch m.kind {
 			case monitorKindOriginal:
-				var updates ovsdb.TableUpdates
-				updates.FromTableUpdates2(update)
-				// Deep copy for every monitor since each one filters
-				// the update for relevant tables and removes items
-				// from the update array
-				dbUpdates, _ := deepCopy(updates)
-				m.Send(dbUpdates)
+				m.Send(update)
 			case monitorKindConditional:
-				dbUpdates, _ := deepCopy2(update)
-				m.Send2(dbUpdates)
+				m.Send2(update)
 			case monitorKindConditionalSince:
-				dbUpdates, _ := deepCopy2(update)
-				m.Send3(id, dbUpdates)
+				m.Send3(id, update)
 			}
 		}
 	}
