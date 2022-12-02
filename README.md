@@ -130,6 +130,9 @@ This package is divided into several sub-packages. Documentation for each sub-pa
 * **ovsdb**: low level OVS types [![godoc for libovsdb/ovsdb][ovsdbbadge]][ovsdbdoc]
 * **cache**: model-based cache [![godoc for libovsdb/cache][cachebadge]][cachedoc]
 * **modelgen**: common code-generator functions  [![godoc for libovsdb/modelgen][genbadge]][gendoc]
+* **server**: ovsdb test server [![godoc for libovsdb/server][serverbadge]][serverdoc]
+* **database**: in-memory database for the server [![godoc for libovsdb/database][dbbadge]][dbdoc]
+* **updates**: common code to handle model updates [![godoc for libovsdb/updates][updatesbadge]][updatesdoc]
 
 [doc]: https://pkg.go.dev/
 [clientbadge]: https://pkg.go.dev/badge/github.com/ovn-org/libovsdb/client
@@ -138,12 +141,18 @@ This package is divided into several sub-packages. Documentation for each sub-pa
 [ovsdbbadge]: https://pkg.go.dev/badge/github.com/ovn-org/libovsdb/ovsdb
 [cachebadge]: https://pkg.go.dev/badge/github.com/ovn-org/libovsdb/cache
 [genbadge]: https://pkg.go.dev/badge/github.com/ovn-org/libovsdb/modelgen
+[serverbadge]: https://pkg.go.dev/badge/github.com/ovn-org/libovsdb/server
+[dbbadge]: https://pkg.go.dev/badge/github.com/ovn-org/libovsdb/database
+[updatesbadge]: https://pkg.go.dev/badge/github.com/ovn-org/libovsdb/server
 [clientdoc]: https://pkg.go.dev/github.com/ovn-org/libovsdb/client
 [mapperdoc]: https://pkg.go.dev/github.com/ovn-org/libovsdb/mapper
 [modeldoc]: https://pkg.go.dev/github.com/ovn-org/libovsdb/model
 [ovsdbdoc]: https://pkg.go.dev/github.com/ovn-org/libovsdb/ovsdb
 [cachedoc]: https://pkg.go.dev/github.com/ovn-org/libovsdb/cache
 [gendoc]: https://pkg.go.dev/github.com/ovn-org/libovsdb/modelgen
+[serverdoc]: https://pkg.go.dev/github.com/ovn-org/libovsdb/server
+[dbdoc]: https://pkg.go.dev/github.com/ovn-org/libovsdb/database
+[updatesdoc]: https://pkg.go.dev/github.com/ovn-org/libovsdb/updates
 
 ## Quick API Examples
 
